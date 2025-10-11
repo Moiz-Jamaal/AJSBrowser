@@ -48,6 +48,7 @@ function buildMenu() {
         {
           label: '🔓 Unlock Admin Menu',
           visible: !adminMenuUnlocked,
+          accelerator: 'CmdOrCtrl+Shift+U',
           click: () => {
             handleUnlockClick();
           }
@@ -220,12 +221,15 @@ function buildMenu() {
 function handleUnlockClick() {
   unlockClickCount++;
   
+  // Show click count in console for debugging (not visible to users)
+  console.log(`🔓 Unlock click ${unlockClickCount}/5`);
+  
   // Clear previous timer
   if (unlockClickTimer) {
     clearTimeout(unlockClickTimer);
   }
   
-  // If 5 clicks within 2 seconds, unlock
+  // If 5 clicks within 3 seconds, unlock
   if (unlockClickCount >= 5) {
     adminMenuUnlocked = true;
     unlockClickCount = 0;
@@ -236,10 +240,11 @@ function handleUnlockClick() {
     return;
   }
   
-  // Reset counter after 2 seconds of inactivity
+  // Reset counter after 3 seconds of inactivity
   unlockClickTimer = setTimeout(() => {
     unlockClickCount = 0;
-  }, 2000);
+    console.log('🔄 Unlock counter reset');
+  }, 3000);
 }
 
 function createWindow() {
