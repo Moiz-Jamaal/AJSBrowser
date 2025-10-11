@@ -1,5 +1,6 @@
-const { app, BrowserWindow, Menu, dialog, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, ipcMain, desktopCapturer } = require('electron');
 const path = require('path');
+const os = require('os');
 
 // Allowed domain pattern
 const ALLOWED_DOMAIN = 'https://exams.jameasaifiyah.org';
@@ -346,6 +347,42 @@ if (!gotTheLock) {
 
 app.on('window-all-closed', () => {
   app.quit();
+});
+
+// ==================== IPC HANDLERS FOR REMOTE MONITORING ====================
+
+// Handle screen capture requests
+ipcMain.handle('capture-screen', async (event) => {
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 1920, height: 1080 }
+    });
+
+    if (sources.length > 0) {
+      // Return the primary screen as base64
+      return sources[0].thumbnail.toDataURL();
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Screen capture error:', error);
+    return null;
+  }
+});
+
+// Handle system info requests
+ipcMain.handle('get-system-info', async (event) => {
+  return {
+    platform: os.platform(),
+    arch: os.arch(),
+    hostname: os.hostname(),
+    cpus: os.cpus().length,
+    totalMemory: os.totalmem(),
+    freeMemory: os.freemem(),
+    uptime: os.uptime(),
+    userInfo: os.userInfo()
+  };
 });
 
 

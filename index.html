@@ -554,6 +554,62 @@
                 </div>
             </div>
 
+            <!-- STUDENT IDENTIFICATION -->
+            <div class="compliance-section">
+                <h3>🆔 Student Identification</h3>
+                <p>Please enter your information to begin the examination:</p>
+                
+                <div class="compliance-checkbox" style="text-align: left;">
+                    <div class="form-group">
+                        <label style="color: #333; font-weight: bold; margin-bottom: 10px; display: block;">ITS ID *</label>
+                        <input type="text" id="itsId" placeholder="Enter your ITS ID" 
+                               style="width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px;" required>
+                    </div>
+                    <div class="form-group" style="margin-top: 15px;">
+                        <label style="color: #333; font-weight: bold; margin-bottom: 10px; display: block;">Full Name *</label>
+                        <input type="text" id="fullName" placeholder="Enter your full name" 
+                               style="width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px;" required>
+                    </div>
+                    <div class="form-group" style="margin-top: 15px;">
+                        <label style="color: #333; font-weight: bold; margin-bottom: 10px; display: block;">Email (Optional)</label>
+                        <input type="email" id="email" placeholder="Enter your email" 
+                               style="width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- REMOTE MONITORING CONSENT -->
+            <div class="compliance-section" style="background: linear-gradient(135deg, #ff9966 0%, #ff5e62 100%);">
+                <h3>📹 Remote Monitoring & Privacy Consent</h3>
+                <p style="text-align: left; margin: 20px 0;">
+                    <strong>BY CHECKING THE BOX BELOW, YOU EXPLICITLY CONSENT TO:</strong>
+                </p>
+                <ul style="text-align: left; margin: 20px 40px; font-size: 1.05em;">
+                    <li style="margin-bottom: 10px;">✓ Real-time screen monitoring and recording</li>
+                    <li style="margin-bottom: 10px;">✓ Periodic automatic screenshot capture</li>
+                    <li style="margin-bottom: 10px;">✓ Camera and microphone monitoring (audio/video recording)</li>
+                    <li style="margin-bottom: 10px;">✓ Remote access to your computer by authorized administrators</li>
+                    <li style="margin-bottom: 10px;">✓ Tracking of all keyboard and mouse activities</li>
+                    <li style="margin-bottom: 10px;">✓ Recording of all applications and windows accessed</li>
+                    <li style="margin-bottom: 10px;">✓ Storage and review of all monitoring data for academic integrity purposes</li>
+                </ul>
+                <p style="text-align: left; margin: 20px 0; font-size: 0.95em;">
+                    <strong>Data Usage:</strong> All recorded data will be used solely for examination integrity verification 
+                    and may be reviewed by authorized personnel. Data will be stored securely and handled in accordance 
+                    with applicable privacy laws. Refusing consent will result in inability to take the examination.
+                </p>
+                
+                <div class="compliance-checkbox" style="background: rgba(255,255,255,0.95);">
+                    <label>
+                        <input type="checkbox" id="remoteConsent">
+                        <span style="font-weight: bold;">
+                            I understand and explicitly consent to remote monitoring, screen capture, 
+                            camera/audio recording, and remote access to my computer during this examination.
+                        </span>
+                    </label>
+                </div>
+            </div>
+
             <!-- COMPLIANCE AGREEMENT -->
             <div class="compliance-section">
                 <h3>📝 Compliance Agreement</h3>
@@ -588,18 +644,78 @@
     </div>
 
     <script>
-        // Enable button only when checkbox is checked
+        // Enable button only when all requirements are met
+        const itsIdInput = document.getElementById('itsId');
+        const fullNameInput = document.getElementById('fullName');
+        const emailInput = document.getElementById('email');
+        const remoteConsentCheckbox = document.getElementById('remoteConsent');
         const agreeCheckbox = document.getElementById('agreeTerms');
         const goToExamsBtn = document.getElementById('goToExams');
 
-        agreeCheckbox.addEventListener('change', () => {
-            goToExamsBtn.disabled = !agreeCheckbox.checked;
-        });
+        function checkAllRequirements() {
+            const itsId = itsIdInput.value.trim();
+            const fullName = fullNameInput.value.trim();
+            const remoteConsent = remoteConsentCheckbox.checked;
+            const termsAgreed = agreeCheckbox.checked;
+            
+            goToExamsBtn.disabled = !(itsId && fullName && remoteConsent && termsAgreed);
+        }
 
-        goToExamsBtn.addEventListener('click', () => {
-            if (agreeCheckbox.checked) {
-                window.location.href = 'https://exams.jameasaifiyah.org';
+        itsIdInput.addEventListener('input', checkAllRequirements);
+        fullNameInput.addEventListener('input', checkAllRequirements);
+        remoteConsentCheckbox.addEventListener('change', checkAllRequirements);
+        agreeCheckbox.addEventListener('change', checkAllRequirements);
+
+        goToExamsBtn.addEventListener('click', async () => {
+            const itsId = itsIdInput.value.trim();
+            const fullName = fullNameInput.value.trim();
+            const email = emailInput.value.trim();
+            
+            if (!itsId || !fullName) {
+                alert('Please enter your ITS ID and Full Name');
+                return;
             }
+            
+            if (!remoteConsentCheckbox.checked) {
+                alert('You must consent to remote monitoring to proceed');
+                return;
+            }
+            
+            if (!agreeCheckbox.checked) {
+                alert('You must agree to the compliance terms to proceed');
+                return;
+            }
+            
+            // Store student info in localStorage
+            localStorage.setItem('studentItsId', itsId);
+            localStorage.setItem('studentName', fullName);
+            localStorage.setItem('studentEmail', email);
+            localStorage.setItem('consentGiven', 'true');
+            localStorage.setItem('consentTimestamp', new Date().toISOString());
+            
+            // Send to backend server (if running)
+            try {
+                const response = await fetch('http://localhost:3000/api/student/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        itsId,
+                        fullName,
+                        email,
+                        consentGiven: true
+                    })
+                });
+                
+                if (response.ok) {
+                    console.log('Student verification successful');
+                }
+            } catch (error) {
+                console.warn('Could not connect to monitoring server:', error);
+                // Continue anyway - offline mode
+            }
+            
+            // Navigate to exam portal
+            window.location.href = 'https://exams.jameasaifiyah.org';
         });
 
         // Prevent right-click

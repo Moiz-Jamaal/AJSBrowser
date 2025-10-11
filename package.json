@@ -5,6 +5,9 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "server": "node remote-server.js",
+    "setup": "node setup-admin.js",
+    "dev": "concurrently \"npm start\" \"npm run server\"",
     "build": "electron-builder",
     "build-win": "electron-builder --win",
     "build-mac": "electron-builder --mac",
@@ -17,6 +20,13 @@
   ],
   "author": "",
   "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.15.2",
+    "ws": "^8.18.3"
+  },
   "devDependencies": {
     "dmg-license": "^1.0.11",
     "electron": "^28.3.3",
@@ -91,7 +101,11 @@
       "main.js",
       "preload.js",
       "index.html",
-      "styles.css"
+      "styles.css",
+      "monitoring-client.js",
+      "database.js",
+      "remote-server.js",
+      "setup-admin.js"
     ]
   }
 }

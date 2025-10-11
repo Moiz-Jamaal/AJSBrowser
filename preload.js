@@ -1,6 +1,14 @@
 // Preload script - runs before web page loads
 // This script runs in an isolated context
 
+const { contextBridge, ipcRenderer } = require('electron');
+
+// Expose screen capture API to renderer process
+contextBridge.exposeInMainWorld('electronAPI', {
+  captureScreen: () => ipcRenderer.invoke('capture-screen'),
+  getSystemInfo: () => ipcRenderer.invoke('get-system-info')
+});
+
 window.addEventListener('DOMContentLoaded', () => {
   // Disable right-click context menu
   document.addEventListener('contextmenu', (e) => {
@@ -28,4 +36,9 @@ window.addEventListener('DOMContentLoaded', () => {
       return false;
     }
   });
+
+  // Inject monitoring client script
+  const script = document.createElement('script');
+  script.src = 'file://' + __dirname + '/monitoring-client.js';
+  document.head.appendChild(script);
 });
