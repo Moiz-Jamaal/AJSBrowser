@@ -231,6 +231,12 @@ function promptAdminPassword() {
         modal: true,
         parent: mainWindow,
         show: false,
+        alwaysOnTop: true,
+        frame: true,
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        fullscreenable: false,
         webPreferences: {
           nodeIntegration: true,
           contextIsolation: false
@@ -312,6 +318,10 @@ function promptAdminPassword() {
 
       promptWindow.once('ready-to-show', () => {
         promptWindow.show();
+        promptWindow.focus();
+        promptWindow.setAlwaysOnTop(true, 'screen-saver');
+        // Ensure it stays on top
+        promptWindow.moveTop();
       });
 
       ipcMain.once('admin-password-entered', (event, password) => {
