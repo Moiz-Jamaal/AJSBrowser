@@ -12,6 +12,8 @@ const ADMIN_PASSWORD = 'AJS@Admin2025';
 
 let mainWindow;
 let adminMenuUnlocked = false;
+let unlockClickCount = 0;
+let unlockClickTimer = null;
 
 // Disable hardware acceleration for better compatibility
 app.disableHardwareAcceleration();
@@ -47,7 +49,7 @@ function buildMenu() {
           label: '🔓 Unlock Admin Menu',
           visible: !adminMenuUnlocked,
           click: () => {
-            promptAdminPassword();
+            handleUnlockClick();
           }
         },
         {
@@ -214,193 +216,30 @@ function buildMenu() {
 }
 
 // Prompt for admin password
-function promptAdminPassword() {
-  // Temporarily lower main window priority
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setAlwaysOnTop(false);
+// Handle unlock menu clicks - 5 rapid clicks to unlock
+function handleUnlockClick() {
+  unlockClickCount++;
+  
+  // Clear previous timer
+  if (unlockClickTimer) {
+    clearTimeout(unlockClickTimer);
   }
-
-  dialog.showMessageBox({
-    type: 'question',
-    title: 'Admin Authentication',
-    message: 'Enter Admin Password',
-    detail: 'This will unlock administrative features',
-    buttons: ['Cancel', 'Enter Password']
-  }).then(result => {
-    if (result.response === 0) {
-      // Cancelled - restore main window
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.setAlwaysOnTop(true, 'screen-saver');
-      }
-      return;
-    }
+  
+  // If 5 clicks within 2 seconds, unlock
+  if (unlockClickCount >= 5) {
+    adminMenuUnlocked = true;
+    unlockClickCount = 0;
+    buildMenu();
     
-    if (result.response === 1) {
-      // Create a simple prompt dialog
-      const { BrowserWindow } = require('electron');
-      const promptWindow = new BrowserWindow({
-        width: 450,
-        height: 250,
-        modal: false,
-        parent: null,
-        show: false,
-        alwaysOnTop: true,
-        frame: true,
-        resizable: false,
-        minimizable: false,
-        maximizable: false,
-        fullscreenable: false,
-        center: true,
-        skipTaskbar: false,
-        webPreferences: {
-          nodeIntegration: true,
-          contextIsolation: false
-        }
-      });
-
-      promptWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              padding: 20px;
-              background: #f5f5f5;
-            }
-            .container {
-              background: white;
-              padding: 20px;
-              border-radius: 8px;
-              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            }
-            h2 {
-              margin: 0 0 20px 0;
-              color: #333;
-            }
-            input {
-              width: 100%;
-              padding: 10px;
-              border: 2px solid #ddd;
-              border-radius: 4px;
-              font-size: 14px;
-              margin-bottom: 15px;
-            }
-            button {
-              padding: 10px 20px;
-              border: none;
-              border-radius: 4px;
-              cursor: pointer;
-              font-size: 14px;
-              margin-right: 10px;
-            }
-            .ok {
-              background: #667eea;
-              color: white;
-            }
-            .cancel {
-              background: #ddd;
-              color: #333;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h2>🔐 Admin Password Required</h2>
-            <p style="margin-bottom: 15px; color: #666;">Enter the administrator password to unlock admin features:</p>
-            <input type="password" id="password" placeholder="Enter password" autofocus>
-            <div style="text-align: right;">
-              <button class="cancel" onclick="cancel()">Cancel</button>
-              <button class="ok" onclick="submit()">OK</button>
-            </div>
-          </div>
-          <script>
-            const { ipcRenderer } = require('electron');
-            
-            // Auto-focus on load
-            window.addEventListener('load', () => {
-              document.getElementById('password').focus();
-            });
-            
-            document.getElementById('password').addEventListener('keypress', (e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                submit();
-              }
-            });
-            
-            function submit() {
-              const password = document.getElementById('password').value;
-              if (password.trim() === '') {
-                alert('Please enter a password');
-                return;
-              }
-              ipcRenderer.send('admin-password-entered', password);
-            }
-            
-            function cancel() {
-              ipcRenderer.send('admin-password-cancelled');
-            }
-          </script>
-        </body>
-        </html>
-      `));
-
-      promptWindow.once('ready-to-show', () => {
-        promptWindow.show();
-        promptWindow.focus();
-        promptWindow.setAlwaysOnTop(true, 'floating');
-        promptWindow.center();
-        
-        // Bring to foreground
-        if (process.platform === 'darwin') {
-          app.dock.show();
-        }
-        promptWindow.moveTop();
-        promptWindow.setVisibleOnAllWorkspaces(true);
-        promptWindow.setFullScreenable(false);
-      });
-
-      promptWindow.on('closed', () => {
-        // Restore main window priority
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.setAlwaysOnTop(true, 'screen-saver');
-        }
-      });
-
-      ipcMain.once('admin-password-entered', (event, password) => {
-        promptWindow.close();
-        
-        // Restore main window priority
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.setAlwaysOnTop(true, 'screen-saver');
-        }
-        
-        if (password === ADMIN_PASSWORD) {
-          adminMenuUnlocked = true;
-          buildMenu();
-          dialog.showMessageBox({
-            type: 'info',
-            title: 'Access Granted',
-            message: 'Admin menu unlocked successfully!',
-            detail: 'You now have access to monitoring and update features.',
-            buttons: ['OK']
-          });
-        } else {
-          dialog.showErrorBox('Access Denied', 'Incorrect password. Admin menu remains locked.');
-        }
-      });
-
-      ipcMain.once('admin-password-cancelled', () => {
-        promptWindow.close();
-        
-        // Restore main window priority
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.setAlwaysOnTop(true, 'screen-saver');
-        }
-      });
-    }
-  });
+    // Silent unlock - no notification
+    console.log('🔓 Admin menu unlocked via 5-click sequence');
+    return;
+  }
+  
+  // Reset counter after 2 seconds of inactivity
+  unlockClickTimer = setTimeout(() => {
+    unlockClickCount = 0;
+  }, 2000);
 }
 
 function createWindow() {
