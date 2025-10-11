@@ -6,7 +6,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose screen capture API to renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
   captureScreen: () => ipcRenderer.invoke('capture-screen'),
-  getSystemInfo: () => ipcRenderer.invoke('get-system-info')
+  getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
+  unlockAdmin: () => ipcRenderer.send('unlock-admin-request')
 });
 
 window.addEventListener('DOMContentLoaded', () => {

@@ -46,14 +46,6 @@ function buildMenu() {
           type: 'separator'
         },
         {
-          label: '🔓 Unlock Admin Menu',
-          visible: !adminMenuUnlocked,
-          accelerator: 'CmdOrCtrl+Shift+U',
-          click: () => {
-            handleUnlockClick();
-          }
-        },
-        {
           label: '❌ Exit',
           accelerator: 'Alt+F4',
           click: () => {
@@ -578,6 +570,11 @@ ipcMain.handle('get-system-info', async (event) => {
     uptime: os.uptime(),
     userInfo: os.userInfo()
   };
+});
+
+// Handle admin unlock from frontend
+ipcMain.on('unlock-admin-request', (event) => {
+  handleUnlockClick();
 });
 
 

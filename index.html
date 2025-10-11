@@ -637,7 +637,7 @@
             </div>
         </div>
 
-        <div class="footer">
+        <div class="footer" id="adminFooter" style="cursor: default;">
             <p><strong>Technical Support:</strong> Contact your system administrator</p>
             <p>Jamea Saifiyah Examination Portal • AJS Exam Browser v1.0.0</p>
         </div>
@@ -740,6 +740,45 @@
         window.addEventListener('load', () => {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
+
+        // Hidden admin unlock - 5 clicks on footer within 3 seconds
+        let unlockClickCount = 0;
+        let unlockClickTimer = null;
+        const adminFooter = document.getElementById('adminFooter');
+
+        if (adminFooter) {
+            adminFooter.addEventListener('click', function(e) {
+                unlockClickCount++;
+                
+                // Clear previous timer
+                if (unlockClickTimer) {
+                    clearTimeout(unlockClickTimer);
+                }
+                
+                // Visual feedback (subtle) - optional
+                adminFooter.style.opacity = '0.7';
+                setTimeout(() => {
+                    adminFooter.style.opacity = '1';
+                }, 100);
+                
+                // If 5 clicks within 3 seconds, trigger unlock
+                if (unlockClickCount >= 5) {
+                    unlockClickCount = 0;
+                    
+                    // Check if electronAPI exists (we're in Electron)
+                    if (window.electronAPI && window.electronAPI.unlockAdmin) {
+                        window.electronAPI.unlockAdmin();
+                        console.log('🔓 Admin unlock triggered');
+                    }
+                    return;
+                }
+                
+                // Reset counter after 3 seconds of inactivity
+                unlockClickTimer = setTimeout(() => {
+                    unlockClickCount = 0;
+                }, 3000);
+            });
+        }
     </script>
 </body>
 </html>
