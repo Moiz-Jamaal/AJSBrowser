@@ -122,7 +122,7 @@ class RemoteServerManager {
   }
 
   // Open admin panel in browser
-  openAdminPanel() {
+  openAdminPanel(mainWindow = null) {
     if (!this.isRunning) {
       return {
         success: false,
@@ -130,12 +130,23 @@ class RemoteServerManager {
       };
     }
 
+    // If mainWindow is provided, load in the same window
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.loadURL(`http://localhost:${this.port}/admin`);
+      return {
+        success: true,
+        message: 'Admin panel opened in browser window',
+        url: `http://localhost:${this.port}/admin`
+      };
+    }
+    
+    // Fallback to external browser if no window provided
     const { shell } = require('electron');
     shell.openExternal(`http://localhost:${this.port}/admin`);
     
     return {
       success: true,
-      message: 'Admin panel opened in browser'
+      message: 'Admin panel opened in external browser'
     };
   }
 }

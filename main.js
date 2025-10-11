@@ -148,7 +148,7 @@ function buildMenu() {
               label: '🌐 Open Admin Panel',
               enabled: serverStatus.isRunning,
               click: () => {
-                const result = remoteServerManager.openAdminPanel();
+                const result = remoteServerManager.openAdminPanel(mainWindow);
                 if (!result.success) {
                   dialog.showMessageBox({
                     type: 'warning',
@@ -156,6 +156,17 @@ function buildMenu() {
                     message: result.message,
                     buttons: ['OK']
                   });
+                }
+              }
+            },
+            {
+              type: 'separator'
+            },
+            {
+              label: '◀️  Back to Exam Portal',
+              click: () => {
+                if (mainWindow) {
+                  mainWindow.loadURL(ALLOWED_DOMAIN);
                 }
               }
             }
@@ -356,7 +367,11 @@ function createWindow() {
 
   // Intercept navigation attempts
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith(ALLOWED_DOMAIN)) {
+    // Allow localhost for admin panel (when admin is unlocked)
+    const isLocalhost = url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:');
+    const isAllowedDomain = url.startsWith(ALLOWED_DOMAIN);
+    
+    if (!isAllowedDomain && !(isLocalhost && adminMenuUnlocked)) {
       event.preventDefault();
       dialog.showErrorBox(
         'Navigation Blocked',
