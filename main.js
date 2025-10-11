@@ -215,6 +215,11 @@ function buildMenu() {
 
 // Prompt for admin password
 function promptAdminPassword() {
+  // Temporarily lower main window priority
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setAlwaysOnTop(false);
+  }
+
   dialog.showMessageBox({
     type: 'question',
     title: 'Admin Authentication',
@@ -222,14 +227,22 @@ function promptAdminPassword() {
     detail: 'This will unlock administrative features',
     buttons: ['Cancel', 'Enter Password']
   }).then(result => {
+    if (result.response === 0) {
+      // Cancelled - restore main window
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      }
+      return;
+    }
+    
     if (result.response === 1) {
       // Create a simple prompt dialog
       const { BrowserWindow } = require('electron');
       const promptWindow = new BrowserWindow({
-        width: 400,
-        height: 200,
-        modal: true,
-        parent: mainWindow,
+        width: 450,
+        height: 250,
+        modal: false,
+        parent: null,
         show: false,
         alwaysOnTop: true,
         frame: true,
@@ -237,6 +250,8 @@ function promptAdminPassword() {
         minimizable: false,
         maximizable: false,
         fullscreenable: false,
+        center: true,
+        skipTaskbar: false,
         webPreferences: {
           nodeIntegration: true,
           contextIsolation: false
@@ -291,20 +306,35 @@ function promptAdminPassword() {
         </head>
         <body>
           <div class="container">
-            <h2>🔐 Admin Password</h2>
+            <h2>🔐 Admin Password Required</h2>
+            <p style="margin-bottom: 15px; color: #666;">Enter the administrator password to unlock admin features:</p>
             <input type="password" id="password" placeholder="Enter password" autofocus>
-            <button class="ok" onclick="submit()">OK</button>
-            <button class="cancel" onclick="cancel()">Cancel</button>
+            <div style="text-align: right;">
+              <button class="cancel" onclick="cancel()">Cancel</button>
+              <button class="ok" onclick="submit()">OK</button>
+            </div>
           </div>
           <script>
             const { ipcRenderer } = require('electron');
             
+            // Auto-focus on load
+            window.addEventListener('load', () => {
+              document.getElementById('password').focus();
+            });
+            
             document.getElementById('password').addEventListener('keypress', (e) => {
-              if (e.key === 'Enter') submit();
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submit();
+              }
             });
             
             function submit() {
               const password = document.getElementById('password').value;
+              if (password.trim() === '') {
+                alert('Please enter a password');
+                return;
+              }
               ipcRenderer.send('admin-password-entered', password);
             }
             
@@ -319,13 +349,33 @@ function promptAdminPassword() {
       promptWindow.once('ready-to-show', () => {
         promptWindow.show();
         promptWindow.focus();
-        promptWindow.setAlwaysOnTop(true, 'screen-saver');
-        // Ensure it stays on top
+        promptWindow.setAlwaysOnTop(true, 'floating');
+        promptWindow.center();
+        
+        // Bring to foreground
+        if (process.platform === 'darwin') {
+          app.dock.show();
+        }
         promptWindow.moveTop();
+        promptWindow.setVisibleOnAllWorkspaces(true);
+        promptWindow.setFullScreenable(false);
+      });
+
+      promptWindow.on('closed', () => {
+        // Restore main window priority
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.setAlwaysOnTop(true, 'screen-saver');
+        }
       });
 
       ipcMain.once('admin-password-entered', (event, password) => {
         promptWindow.close();
+        
+        // Restore main window priority
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.setAlwaysOnTop(true, 'screen-saver');
+        }
+        
         if (password === ADMIN_PASSWORD) {
           adminMenuUnlocked = true;
           buildMenu();
@@ -343,6 +393,11 @@ function promptAdminPassword() {
 
       ipcMain.once('admin-password-cancelled', () => {
         promptWindow.close();
+        
+        // Restore main window priority
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.setAlwaysOnTop(true, 'screen-saver');
+        }
       });
     }
   });
