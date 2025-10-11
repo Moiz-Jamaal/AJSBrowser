@@ -1,14 +1,342 @@
 const { app, BrowserWindow, Menu, dialog, shell, ipcMain, desktopCapturer } = require('electron');
 const path = require('path');
 const os = require('os');
+const autoUpdater = require('./auto-updater');
+const remoteServerManager = require('./server-manager');
 
 // Allowed domain pattern
 const ALLOWED_DOMAIN = 'https://exams.jameasaifiyah.org';
 
+// Admin password for unlocking hidden menu
+const ADMIN_PASSWORD = 'AJS@Admin2025';
+
 let mainWindow;
+let adminMenuUnlocked = false;
 
 // Disable hardware acceleration for better compatibility
 app.disableHardwareAcceleration();
+
+// Function to build menu (with or without admin features)
+function buildMenu() {
+  const menuTemplate = [
+    {
+      label: 'AJSExams',
+      submenu: [
+        {
+          label: '🔄 Refresh (Hard Reload)',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.reloadIgnoringCache();
+            }
+          }
+        },
+        {
+          label: '🏠 Go to Exam Portal',
+          accelerator: 'CmdOrCtrl+H',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.loadURL(ALLOWED_DOMAIN);
+            }
+          }
+        },
+        {
+          type: 'separator'
+        },
+        {
+          label: '🔓 Unlock Admin Menu',
+          visible: !adminMenuUnlocked,
+          click: () => {
+            promptAdminPassword();
+          }
+        },
+        {
+          label: '❌ Exit',
+          accelerator: 'Alt+F4',
+          click: () => {
+            // Stop remote server if running
+            if (remoteServerManager.getStatus().isRunning) {
+              remoteServerManager.stop();
+            }
+            app.quit();
+          }
+        }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Actual Size',
+          accelerator: 'CmdOrCtrl+0',
+          role: 'resetZoom'
+        },
+        {
+          label: 'Zoom In',
+          accelerator: 'CmdOrCtrl+Plus',
+          role: 'zoomIn'
+        },
+        {
+          label: 'Zoom Out',
+          accelerator: 'CmdOrCtrl+-',
+          role: 'zoomOut'
+        }
+      ]
+    }
+  ];
+
+  // Add Admin menu if unlocked
+  if (adminMenuUnlocked) {
+    const serverStatus = remoteServerManager.getStatus();
+    
+    menuTemplate.push({
+      label: '🔐 Admin',
+      submenu: [
+        {
+          label: '📊 Remote Monitoring',
+          type: 'submenu',
+          submenu: [
+            {
+              label: serverStatus.isRunning ? '🟢 Server Running' : '🔴 Server Stopped',
+              enabled: false
+            },
+            {
+              type: 'separator'
+            },
+            {
+              label: '▶️  Start Server',
+              enabled: !serverStatus.isRunning,
+              click: () => {
+                const result = remoteServerManager.start();
+                dialog.showMessageBox({
+                  type: result.success ? 'info' : 'error',
+                  title: result.success ? 'Server Started' : 'Error',
+                  message: result.message,
+                  detail: result.success ? `Admin panel: ${result.adminUrl}` : '',
+                  buttons: ['OK']
+                });
+                buildMenu(); // Rebuild menu to update status
+              }
+            },
+            {
+              label: '⏹️  Stop Server',
+              enabled: serverStatus.isRunning,
+              click: () => {
+                const result = remoteServerManager.stop();
+                dialog.showMessageBox({
+                  type: result.success ? 'info' : 'error',
+                  title: result.success ? 'Server Stopped' : 'Error',
+                  message: result.message,
+                  buttons: ['OK']
+                });
+                buildMenu(); // Rebuild menu to update status
+              }
+            },
+            {
+              label: '🔄 Restart Server',
+              enabled: serverStatus.isRunning,
+              click: () => {
+                remoteServerManager.restart();
+                dialog.showMessageBox({
+                  type: 'info',
+                  title: 'Server Restarting',
+                  message: 'Remote monitoring server is restarting...',
+                  buttons: ['OK']
+                });
+                setTimeout(() => buildMenu(), 2000);
+              }
+            },
+            {
+              type: 'separator'
+            },
+            {
+              label: '🌐 Open Admin Panel',
+              enabled: serverStatus.isRunning,
+              click: () => {
+                const result = remoteServerManager.openAdminPanel();
+                if (!result.success) {
+                  dialog.showMessageBox({
+                    type: 'warning',
+                    title: 'Server Not Running',
+                    message: result.message,
+                    buttons: ['OK']
+                  });
+                }
+              }
+            }
+          ]
+        },
+        {
+          type: 'separator'
+        },
+        {
+          label: '🔄 Check for Updates',
+          click: () => {
+            autoUpdater.manualCheckForUpdates();
+          }
+        },
+        {
+          label: 'ℹ️  About',
+          click: () => {
+            const version = autoUpdater.getCurrentVersion();
+            const serverStatus = remoteServerManager.getStatus();
+            dialog.showMessageBox({
+              type: 'info',
+              title: 'About AJS Exam Browser',
+              message: `AJS Exam Browser v${version}`,
+              detail: `Secure examination browser for Jamea Saifiyah\n\nRemote Monitoring: ${serverStatus.isRunning ? 'Active' : 'Inactive'}\n\nDeveloped for academic integrity`,
+              buttons: ['OK']
+            });
+          }
+        },
+        {
+          type: 'separator'
+        },
+        {
+          label: '🔒 Lock Admin Menu',
+          click: () => {
+            adminMenuUnlocked = false;
+            buildMenu();
+            dialog.showMessageBox({
+              type: 'info',
+              title: 'Menu Locked',
+              message: 'Admin menu has been locked',
+              buttons: ['OK']
+            });
+          }
+        }
+      ]
+    });
+  }
+
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(menu);
+}
+
+// Prompt for admin password
+function promptAdminPassword() {
+  dialog.showMessageBox({
+    type: 'question',
+    title: 'Admin Authentication',
+    message: 'Enter Admin Password',
+    detail: 'This will unlock administrative features',
+    buttons: ['Cancel', 'Enter Password']
+  }).then(result => {
+    if (result.response === 1) {
+      // Create a simple prompt dialog
+      const { BrowserWindow } = require('electron');
+      const promptWindow = new BrowserWindow({
+        width: 400,
+        height: 200,
+        modal: true,
+        parent: mainWindow,
+        show: false,
+        webPreferences: {
+          nodeIntegration: true,
+          contextIsolation: false
+        }
+      });
+
+      promptWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              padding: 20px;
+              background: #f5f5f5;
+            }
+            .container {
+              background: white;
+              padding: 20px;
+              border-radius: 8px;
+              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }
+            h2 {
+              margin: 0 0 20px 0;
+              color: #333;
+            }
+            input {
+              width: 100%;
+              padding: 10px;
+              border: 2px solid #ddd;
+              border-radius: 4px;
+              font-size: 14px;
+              margin-bottom: 15px;
+            }
+            button {
+              padding: 10px 20px;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              font-size: 14px;
+              margin-right: 10px;
+            }
+            .ok {
+              background: #667eea;
+              color: white;
+            }
+            .cancel {
+              background: #ddd;
+              color: #333;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h2>🔐 Admin Password</h2>
+            <input type="password" id="password" placeholder="Enter password" autofocus>
+            <button class="ok" onclick="submit()">OK</button>
+            <button class="cancel" onclick="cancel()">Cancel</button>
+          </div>
+          <script>
+            const { ipcRenderer } = require('electron');
+            
+            document.getElementById('password').addEventListener('keypress', (e) => {
+              if (e.key === 'Enter') submit();
+            });
+            
+            function submit() {
+              const password = document.getElementById('password').value;
+              ipcRenderer.send('admin-password-entered', password);
+            }
+            
+            function cancel() {
+              ipcRenderer.send('admin-password-cancelled');
+            }
+          </script>
+        </body>
+        </html>
+      `));
+
+      promptWindow.once('ready-to-show', () => {
+        promptWindow.show();
+      });
+
+      ipcMain.once('admin-password-entered', (event, password) => {
+        promptWindow.close();
+        if (password === ADMIN_PASSWORD) {
+          adminMenuUnlocked = true;
+          buildMenu();
+          dialog.showMessageBox({
+            type: 'info',
+            title: 'Access Granted',
+            message: 'Admin menu unlocked successfully!',
+            detail: 'You now have access to monitoring and update features.',
+            buttons: ['OK']
+          });
+        } else {
+          dialog.showErrorBox('Access Denied', 'Incorrect password. Admin menu remains locked.');
+        }
+      });
+
+      ipcMain.once('admin-password-cancelled', () => {
+        promptWindow.close();
+      });
+    }
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -86,66 +414,8 @@ function createWindow() {
     webPreferences.enableBlinkFeatures = 'FileSystemAccessAPI';
   });
 
-  // Create a simple menu with refresh button
-  const menuTemplate = [
-    {
-      label: 'AJSExams',
-      submenu: [
-        {
-          label: '🔄 Refresh (Hard Reload)',
-          accelerator: 'CmdOrCtrl+Shift+R',
-          click: () => {
-            if (mainWindow) {
-              // Clear cache and reload
-              mainWindow.webContents.reloadIgnoringCache();
-            }
-          }
-        },
-        {
-          label: '🏠 Go to Exam Portal',
-          accelerator: 'CmdOrCtrl+H',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.loadURL(ALLOWED_DOMAIN);
-            }
-          }
-        },
-        {
-          type: 'separator'
-        },
-        {
-          label: '❌ Exit',
-          accelerator: 'Alt+F4',
-          click: () => {
-            app.quit();
-          }
-        }
-      ]
-    },
-    {
-      label: 'View',
-      submenu: [
-        {
-          label: 'Actual Size',
-          accelerator: 'CmdOrCtrl+0',
-          role: 'resetZoom'
-        },
-        {
-          label: 'Zoom In',
-          accelerator: 'CmdOrCtrl+Plus',
-          role: 'zoomIn'
-        },
-        {
-          label: 'Zoom Out',
-          accelerator: 'CmdOrCtrl+-',
-          role: 'zoomOut'
-        }
-      ]
-    }
-  ];
-  
-  const menu = Menu.buildFromTemplate(menuTemplate);
-  Menu.setApplicationMenu(menu);
+  // Create menu with hidden admin features
+  buildMenu();
 
   // Load the start page
   mainWindow.loadFile('index.html');
@@ -307,6 +577,10 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     createWindow();
 
+    // Start auto-update checks
+    autoUpdater.startAutoUpdateChecks();
+    console.log('✅ Auto-updater initialized');
+
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
@@ -346,7 +620,19 @@ if (!gotTheLock) {
 }
 
 app.on('window-all-closed', () => {
+  // Cleanup before quitting
+  autoUpdater.stopAutoUpdateChecks();
+  if (remoteServerManager.getStatus().isRunning) {
+    remoteServerManager.stop();
+  }
   app.quit();
+});
+
+app.on('before-quit', () => {
+  // Stop remote server if running
+  if (remoteServerManager.getStatus().isRunning) {
+    remoteServerManager.stop();
+  }
 });
 
 // ==================== IPC HANDLERS FOR REMOTE MONITORING ====================
