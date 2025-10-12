@@ -82,95 +82,26 @@ function buildMenu() {
 
   // Add Admin menu if unlocked
   if (adminMenuUnlocked) {
-    const serverStatus = remoteServerManager.getStatus();
-    
     menuTemplate.push({
       label: '🔐 Admin',
       submenu: [
         {
-          label: '📊 Remote Monitoring',
-          type: 'submenu',
-          submenu: [
-            {
-              label: serverStatus.isRunning ? '🟢 Server Running' : '🔴 Server Stopped',
-              enabled: false
-            },
-            {
-              type: 'separator'
-            },
-            {
-              label: '▶️  Start Server',
-              enabled: !serverStatus.isRunning,
-              click: () => {
-                const result = remoteServerManager.start();
-                dialog.showMessageBox({
-                  type: result.success ? 'info' : 'error',
-                  title: result.success ? 'Server Started' : 'Error',
-                  message: result.message,
-                  detail: result.success ? `Admin panel: ${result.adminUrl}` : '',
-                  buttons: ['OK']
-                });
-                buildMenu(); // Rebuild menu to update status
-              }
-            },
-            {
-              label: '⏹️  Stop Server',
-              enabled: serverStatus.isRunning,
-              click: () => {
-                const result = remoteServerManager.stop();
-                dialog.showMessageBox({
-                  type: result.success ? 'info' : 'error',
-                  title: result.success ? 'Server Stopped' : 'Error',
-                  message: result.message,
-                  buttons: ['OK']
-                });
-                buildMenu(); // Rebuild menu to update status
-              }
-            },
-            {
-              label: '🔄 Restart Server',
-              enabled: serverStatus.isRunning,
-              click: () => {
-                remoteServerManager.restart();
-                dialog.showMessageBox({
-                  type: 'info',
-                  title: 'Server Restarting',
-                  message: 'Remote monitoring server is restarting...',
-                  buttons: ['OK']
-                });
-                setTimeout(() => buildMenu(), 2000);
-              }
-            },
-            {
-              type: 'separator'
-            },
-            {
-              label: '🌐 Open Admin Panel',
-              enabled: serverStatus.isRunning,
-              click: () => {
-                const result = remoteServerManager.openAdminPanel(mainWindow);
-                if (!result.success) {
-                  dialog.showMessageBox({
-                    type: 'warning',
-                    title: 'Server Not Running',
-                    message: result.message,
-                    buttons: ['OK']
-                  });
-                }
-              }
-            },
-            {
-              type: 'separator'
-            },
-            {
-              label: '◀️  Back to Exam Portal',
-              click: () => {
-                if (mainWindow) {
-                  mainWindow.loadURL(ALLOWED_DOMAIN);
-                }
-              }
+          label: '🌐 Admin Login',
+          click: () => {
+            // Load admin login page
+            mainWindow.loadFile('adminlogin.html');
+          }
+        },
+        {
+          type: 'separator'
+        },
+        {
+          label: '◀️  Back to Exam Portal',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.loadURL(ALLOWED_DOMAIN);
             }
-          ]
+          }
         },
         {
           type: 'separator'

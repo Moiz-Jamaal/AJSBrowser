@@ -693,9 +693,11 @@
             localStorage.setItem('consentGiven', 'true');
             localStorage.setItem('consentTimestamp', new Date().toISOString());
             
-            // Send to backend server (if running)
+            // Send to backend server (AWS Lambda)
+            const API_URL = 'https://5wgk4koei8.execute-api.us-east-1.amazonaws.com/prod';
+            
             try {
-                const response = await fetch('http://localhost:3000/api/student/verify', {
+                const response = await fetch(`${API_URL}/api/student/verify`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -711,7 +713,7 @@
                     console.log('✅ Student verification successful:', result);
                     
                     // Also create initial session
-                    const sessionResponse = await fetch('http://localhost:3000/api/session/create', {
+                    const sessionResponse = await fetch(`${API_URL}/api/session/create`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({

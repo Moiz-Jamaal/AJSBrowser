@@ -4,3 +4,8 @@ dist/
 .DS_Store
 Thumbs.db
 *.ico
+
+# AWS
+lambda-deploy.zip
+API_URL.txt
+config.js
