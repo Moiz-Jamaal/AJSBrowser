@@ -707,10 +707,36 @@
                 });
                 
                 if (response.ok) {
-                    console.log('Student verification successful');
+                    const result = await response.json();
+                    console.log('✅ Student verification successful:', result);
+                    
+                    // Also create initial session
+                    const sessionResponse = await fetch('http://localhost:3000/api/session/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            itsId,
+                            studentName: fullName,
+                            machineInfo: {
+                                platform: navigator.platform,
+                                userAgent: navigator.userAgent,
+                                screenResolution: `${window.screen.width}x${window.screen.height}`,
+                                language: navigator.language
+                            }
+                        })
+                    });
+                    
+                    if (sessionResponse.ok) {
+                        const session = await sessionResponse.json();
+                        console.log('✅ Session created:', session);
+                        localStorage.setItem('sessionId', session.sessionId);
+                    }
+                } else {
+                    console.warn('⚠️ Server returned error:', response.status);
                 }
             } catch (error) {
-                console.warn('Could not connect to monitoring server:', error);
+                console.warn('⚠️ Could not connect to monitoring server:', error);
+                console.log('📴 Running in offline mode - data will not be monitored');
                 // Continue anyway - offline mode
             }
             

@@ -210,6 +210,41 @@ app.post('/api/student/verify', async (req, res) => {
   }
 });
 
+// Create initial session
+app.post('/api/session/create', async (req, res) => {
+  try {
+    const { itsId, studentName, machineInfo } = req.body;
+    
+    if (!itsId) {
+      return res.status(400).json({ error: 'ITS ID required' });
+    }
+
+    // Generate session ID
+    const sessionId = 'SESSION_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    // Create session in database
+    await db.createSession(
+      sessionId,
+      itsId,
+      machineInfo?.platform || 'Unknown',
+      machineInfo?.userAgent || 'Unknown',
+      machineInfo?.screenResolution || 'Unknown'
+    );
+    
+    console.log(`✅ Session created for ${itsId}: ${sessionId}`);
+    
+    res.json({
+      success: true,
+      sessionId,
+      itsId,
+      message: 'Session created successfully'
+    });
+  } catch (error) {
+    console.error('Session creation error:', error);
+    res.status(500).json({ error: 'Session creation failed', details: error.message });
+  }
+});
+
 // ==================== WEBSOCKET HANDLERS ====================
 
 wss.on('connection', (ws, req) => {
