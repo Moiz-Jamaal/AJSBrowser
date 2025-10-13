@@ -116,6 +116,18 @@ exports.handler = async (event) => {
       const sessionId = path.split('/').pop();
       return await getScreenshots(db, sessionId, event);
     }
+    
+    if (path === '/api/remote-control/command' && method === 'POST') {
+      return await sendRemoteCommand(db, body, event);
+    }
+    
+    if (path === '/api/remote-control/poll' && method === 'POST') {
+      return await pollRemoteCommands(db, body);
+    }
+    
+    if (path === '/api/remote-control/result' && method === 'POST') {
+      return await updateCommandResult(db, body);
+    }
 
     // 404 Not Found
     return {
@@ -517,6 +529,149 @@ async function getScreenshots(db, sessionId, event) {
       success: true,
       count: screenshots.length,
       screenshots: screenshots
+    })
+  };
+}
+
+// ==================== REMOTE CONTROL COMMAND ====================
+async function sendRemoteCommand(db, body, event) {
+  // Verify admin token
+  const authHeader = event.headers.authorization || event.headers.Authorization;
+  const token = authHeader?.replace('Bearer ', '');
+
+  if (!token) {
+    return {
+      statusCode: 401,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Unauthorized - Token required' })
+    };
+  }
+
+  // Verify admin session
+  const [adminSessions] = await db.execute(
+    'SELECT * FROM exam_admin_sessions WHERE session_token = ? AND expires_at > NOW()',
+    [token]
+  );
+
+  if (adminSessions.length === 0) {
+    return {
+      statusCode: 401,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Invalid or expired token' })
+    };
+  }
+
+  const { sessionId, commandType, commandData } = body;
+
+  if (!sessionId || !commandType) {
+    return {
+      statusCode: 400,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Session ID and command type required' })
+    };
+  }
+
+  // Store command in database for student client to poll
+  await db.execute(
+    `INSERT INTO exam_remote_commands (session_id, command_type, command_data, status, created_at) 
+     VALUES (?, ?, ?, 'pending', NOW())`,
+    [sessionId, commandType, JSON.stringify(commandData || {})]
+  );
+
+  // Log the remote control action
+  const [sessions] = await db.execute(
+    'SELECT its_id FROM exam_remote_sessions WHERE session_id = ?',
+    [sessionId]
+  );
+
+  if (sessions.length > 0) {
+    await db.execute(
+      'INSERT INTO exam_activity_logs (session_id, its_id, activity_type, description, timestamp) VALUES (?, ?, ?, ?, NOW())',
+      [sessionId, sessions[0].its_id, 'admin_access', `Admin executed remote control: ${commandType}`]
+    );
+  }
+
+  return {
+    statusCode: 200,
+    headers: corsHeaders,
+    body: JSON.stringify({
+      success: true,
+      message: 'Remote command sent',
+      commandType
+    })
+  };
+}
+
+// Poll for pending remote commands
+async function pollRemoteCommands(db, body) {
+  const { sessionId } = body;
+
+  if (!sessionId) {
+    return {
+      statusCode: 400,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Session ID required' })
+    };
+  }
+
+  // Get pending commands
+  const [commands] = await db.execute(
+    `SELECT id, command_type, command_data FROM exam_remote_commands 
+     WHERE session_id = ? AND status = 'pending' 
+     ORDER BY created_at ASC 
+     LIMIT 10`,
+    [sessionId]
+  );
+
+  // Mark commands as executing
+  if (commands.length > 0) {
+    const commandIds = commands.map(c => c.id);
+    await db.execute(
+      `UPDATE exam_remote_commands SET status = 'executing', executed_at = NOW() 
+       WHERE id IN (${commandIds.map(() => '?').join(',')})`,
+      commandIds
+    );
+  }
+
+  // Parse command_data JSON
+  const parsedCommands = commands.map(cmd => ({
+    ...cmd,
+    command_data: typeof cmd.command_data === 'string' ? JSON.parse(cmd.command_data) : cmd.command_data
+  }));
+
+  return {
+    statusCode: 200,
+    headers: corsHeaders,
+    body: JSON.stringify({
+      success: true,
+      commands: parsedCommands
+    })
+  };
+}
+
+// Update command execution result
+async function updateCommandResult(db, body) {
+  const { commandId, status, result } = body;
+
+  if (!commandId || !status) {
+    return {
+      statusCode: 400,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Command ID and status required' })
+    };
+  }
+
+  await db.execute(
+    'UPDATE exam_remote_commands SET status = ?, result = ? WHERE id = ?',
+    [status, JSON.stringify(result || {}), commandId]
+  );
+
+  return {
+    statusCode: 200,
+    headers: corsHeaders,
+    body: JSON.stringify({
+      success: true,
+      message: 'Command result updated'
     })
   };
 }

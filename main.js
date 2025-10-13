@@ -544,4 +544,96 @@ ipcMain.on('unlock-admin-request', (event) => {
   handleUnlockClick();
 });
 
+// ==================== REMOTE CONTROL HANDLERS ====================
+
+// Handle remote command execution
+ipcMain.handle('remote-command', async (event, command) => {
+  try {
+    const { exec } = require('child_process');
+    return new Promise((resolve, reject) => {
+      exec(command, (error, stdout, stderr) => {
+        if (error) {
+          resolve({ success: false, error: error.message });
+        } else {
+          resolve({ success: true, output: stdout, error: stderr });
+        }
+      });
+    });
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Handle keyboard simulation
+ipcMain.handle('simulate-keypress', async (event, { key, modifiers }) => {
+  try {
+    // Use robotjs for keyboard simulation
+    const robot = require('robotjs');
+    
+    // Press modifiers
+    if (modifiers) {
+      if (modifiers.includes('control')) robot.keyToggle('control', 'down');
+      if (modifiers.includes('shift')) robot.keyToggle('shift', 'down');
+      if (modifiers.includes('alt')) robot.keyToggle('alt', 'down');
+      if (modifiers.includes('command')) robot.keyToggle('command', 'down');
+    }
+    
+    // Press the key
+    robot.keyTap(key);
+    
+    // Release modifiers
+    if (modifiers) {
+      if (modifiers.includes('control')) robot.keyToggle('control', 'up');
+      if (modifiers.includes('shift')) robot.keyToggle('shift', 'up');
+      if (modifiers.includes('alt')) robot.keyToggle('alt', 'up');
+      if (modifiers.includes('command')) robot.keyToggle('command', 'up');
+    }
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Handle mouse click simulation
+ipcMain.handle('simulate-mouse-click', async (event, { x, y, button }) => {
+  try {
+    const robot = require('robotjs');
+    
+    // Move to position
+    robot.moveMouse(x, y);
+    
+    // Click
+    robot.mouseClick(button || 'left');
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Handle mouse move simulation
+ipcMain.handle('simulate-mouse-move', async (event, { x, y }) => {
+  try {
+    const robot = require('robotjs');
+    robot.moveMouse(x, y);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Get screen size
+ipcMain.handle('get-screen-size', async (event) => {
+  try {
+    const robot = require('robotjs');
+    const size = robot.getScreenSize();
+    return { success: true, width: size.width, height: size.height };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+
+
 

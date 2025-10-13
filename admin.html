@@ -640,10 +640,227 @@
             document.body.appendChild(modal);
         }
 
-        // View session details
+        // View session details with remote control
         function viewDetails(sessionId) {
-            alert(`Session Details Feature\n\nSession ID: ${sessionId}\n\nThis feature will show:\n- Complete session timeline\n- All activities logged\n- Screenshots captured\n- System information\n- Violations detected\n\n(Feature coming soon)`);
-            // TODO: Implement detailed view modal
+            const token = checkAuth();
+            if (!token) return;
+
+            // Create remote control modal
+            const modal = document.createElement('div');
+            modal.id = 'remote-control-modal';
+            modal.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0,0,0,0.95); z-index: 10000; padding: 20px; overflow: auto;
+            `;
+
+            modal.innerHTML = `
+                <div style="max-width: 1600px; margin: 0 auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div style="color: white;">
+                            <h2 style="margin: 0;">🎮 Remote Control - Session: ${sessionId}</h2>
+                            <p style="margin: 5px 0 0 0; font-size: 0.9em; opacity: 0.8;">Take full control of the student's device</p>
+                        </div>
+                        <button onclick="document.getElementById('remote-control-modal').remove();" 
+                                style="background: #dc3545; color: white; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-size: 1em; font-weight: bold;">
+                            ✕ Close
+                        </button>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+                        <!-- Live Screen -->
+                        <div style="background: #1a1a1a; border: 2px solid #667eea; border-radius: 10px; padding: 20px;">
+                            <h3 style="color: white; margin-top: 0;">🖥️ Live Screen</h3>
+                            <div id="rc-screen" style="background: #000; border-radius: 5px; min-height: 400px; position: relative; cursor: crosshair;">
+                                <p style="color: white; text-align: center; padding: 50px;">Loading screen...</p>
+                            </div>
+                            <p style="color: #aaa; font-size: 0.85em; margin: 10px 0;">💡 Click on the screen to send mouse clicks to student device</p>
+                        </div>
+
+                        <!-- Control Panel -->
+                        <div style="background: #1a1a1a; border: 2px solid #667eea; border-radius: 10px; padding: 20px;">
+                            <h3 style="color: white; margin-top: 0;">🎛️ Control Panel</h3>
+
+                            <!-- Quick Actions -->
+                            <div style="margin-bottom: 20px;">
+                                <h4 style="color: #667eea; margin-bottom: 10px;">Quick Actions</h4>
+                                <button onclick="sendRemoteCommand('${sessionId}', 'key_press', {key: 'enter'})" 
+                                        style="width: 100%; margin-bottom: 8px; padding: 10px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                    ⏎ Press Enter
+                                </button>
+                                <button onclick="sendRemoteCommand('${sessionId}', 'key_press', {key: 'escape'})" 
+                                        style="width: 100%; margin-bottom: 8px; padding: 10px; background: #ffc107; color: #000; border: none; border-radius: 5px; cursor: pointer;">
+                                    ⎋ Press ESC
+                                </button>
+                                <button onclick="sendRemoteCommand('${sessionId}', 'key_press', {key: 'tab'})" 
+                                        style="width: 100%; margin-bottom: 8px; padding: 10px; background: #17a2b8; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                    ⇥ Press Tab
+                                </button>
+                                <button onclick="sendRemoteCommand('${sessionId}', 'key_press', {key: 'backspace'})" 
+                                        style="width: 100%; padding: 10px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                    ⌫ Press Backspace
+                                </button>
+                            </div>
+
+                            <!-- Type Text -->
+                            <div style="margin-bottom: 20px;">
+                                <h4 style="color: #667eea; margin-bottom: 10px;">Type Text</h4>
+                                <input type="text" id="rc-text-input" placeholder="Enter text to type..." 
+                                       style="width: 100%; padding: 10px; border: 1px solid #667eea; border-radius: 5px; margin-bottom: 8px; background: #2a2a2a; color: white;">
+                                <button onclick="typeText('${sessionId}')" 
+                                        style="width: 100%; padding: 10px; background: #6f42c1; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                    ⌨️ Type Text
+                                </button>
+                            </div>
+
+                            <!-- Execute Command -->
+                            <div style="margin-bottom: 20px;">
+                                <h4 style="color: #667eea; margin-bottom: 10px;">Execute Command</h4>
+                                <input type="text" id="rc-command-input" placeholder="Enter shell command..." 
+                                       style="width: 100%; padding: 10px; border: 1px solid #667eea; border-radius: 5px; margin-bottom: 8px; background: #2a2a2a; color: white;">
+                                <button onclick="executeShellCommand('${sessionId}')" 
+                                        style="width: 100%; padding: 10px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                    ⚡ Execute
+                                </button>
+                                <div id="rc-command-output" style="margin-top: 10px; padding: 10px; background: #000; border-radius: 5px; color: #0f0; font-family: monospace; font-size: 0.85em; max-height: 200px; overflow-y: auto; display: none;"></div>
+                            </div>
+
+                            <!-- Status -->
+                            <div id="rc-status" style="padding: 10px; background: #2a2a2a; border-radius: 5px; color: #aaa; font-size: 0.85em;">
+                                🟢 Connected
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            // Start live screen updates
+            updateRemoteScreen(sessionId);
+            setInterval(() => updateRemoteScreen(sessionId), 3000);
+
+            // Add click handler for remote screen
+            document.getElementById('rc-screen').addEventListener('click', function(e) {
+                const rect = this.getBoundingClientRect();
+                const x = Math.floor((e.clientX - rect.left) / rect.width * 1920); // Assume 1920px width
+                const y = Math.floor((e.clientY - rect.top) / rect.height * 1080); // Assume 1080px height
+                sendRemoteCommand(sessionId, 'mouse_click', { x, y, button: 'left' });
+                
+                // Visual feedback
+                const dot = document.createElement('div');
+                dot.style.cssText = `
+                    position: absolute; 
+                    left: ${e.clientX - rect.left - 5}px; 
+                    top: ${e.clientY - rect.top - 5}px;
+                    width: 10px; height: 10px; 
+                    background: #00ff00; 
+                    border-radius: 50%;
+                    pointer-events: none;
+                    animation: ping 0.5s ease-out;
+                `;
+                this.appendChild(dot);
+                setTimeout(() => dot.remove(), 500);
+            });
+        }
+
+        // Update remote screen view
+        async function updateRemoteScreen(sessionId) {
+            const token = checkAuth();
+            if (!token) return;
+
+            try {
+                const response = await fetch(`${API_URL}/api/screenshots/${sessionId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await response.json();
+                const container = document.getElementById('rc-screen');
+                
+                if (!container) return;
+
+                if (data.success && data.screenshots && data.screenshots.length > 0) {
+                    const latest = data.screenshots[0];
+                    container.innerHTML = `
+                        <img src="${latest.screenshot_data}" style="width: 100%; border-radius: 5px;">
+                        <div style="position: absolute; top: 10px; left: 10px; background: rgba(0,255,0,0.8); color: #000; padding: 5px 10px; border-radius: 3px; font-size: 0.85em;">
+                            🔴 LIVE
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error updating screen:', error);
+            }
+        }
+
+        // Send remote control command
+        async function sendRemoteCommand(sessionId, commandType, commandData) {
+            const token = checkAuth();
+            if (!token) return;
+
+            const status = document.getElementById('rc-status');
+            if (status) {
+                status.innerHTML = '🟡 Sending command...';
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/remote-control/command`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        sessionId,
+                        commandType,
+                        commandData
+                    })
+                });
+
+                if (response.ok) {
+                    if (status) {
+                        status.innerHTML = '🟢 Command sent!';
+                        setTimeout(() => {
+                            status.innerHTML = '🟢 Connected';
+                        }, 2000);
+                    }
+                } else {
+                    if (status) {
+                        status.innerHTML = '🔴 Command failed';
+                    }
+                }
+            } catch (error) {
+                console.error('Error sending command:', error);
+                if (status) {
+                    status.innerHTML = '🔴 Error: ' + error.message;
+                }
+            }
+        }
+
+        // Type text remotely
+        function typeText(sessionId) {
+            const input = document.getElementById('rc-text-input');
+            const text = input.value.trim();
+            if (text) {
+                sendRemoteCommand(sessionId, 'type_text', { text });
+                input.value = '';
+            }
+        }
+
+        // Execute shell command remotely
+        async function executeShellCommand(sessionId) {
+            const input = document.getElementById('rc-command-input');
+            const command = input.value.trim();
+            if (command) {
+                const output = document.getElementById('rc-command-output');
+                output.style.display = 'block';
+                output.innerHTML = '⏳ Executing...';
+                
+                await sendRemoteCommand(sessionId, 'execute_command', { command });
+                
+                // TODO: Get actual output from command result
+                output.innerHTML = `$ ${command}\n\n(Output will appear here when command completes)`;
+                input.value = '';
+            }
         }
 
         // Logout
