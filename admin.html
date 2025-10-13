@@ -427,34 +427,45 @@
 
         // Terminate session
         async function terminateSession(sessionId, itsId) {
-            const reason = prompt('Enter reason for termination (optional):');
+            // First confirm
+            if (!confirm(`⚠️ Are you sure you want to TERMINATE session for ITS ID: ${itsId}?\n\nThis will immediately end the student's exam session.`)) {
+                return; // User cancelled
+            }
+
+            // Then ask for reason
+            const reason = prompt('Enter reason for termination (optional):', 'Admin terminated session');
             
-            if (confirm(`Are you sure you want to terminate session for ITS ID: ${itsId}?`)) {
-                const token = checkAuth();
-                if (!token) return;
+            const token = checkAuth();
+            if (!token) return;
 
-                try {
-                    const response = await fetch(`${API_URL}/api/session/terminate`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({ sessionId, reason })
-                    });
+            try {
+                console.log('🛑 Terminating session:', sessionId, 'Reason:', reason);
+                
+                const response = await fetch(`${API_URL}/api/session/terminate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ 
+                        sessionId: sessionId, 
+                        reason: reason || 'No reason provided' 
+                    })
+                });
 
-                    const data = await response.json();
+                console.log('Response status:', response.status);
+                const data = await response.json();
+                console.log('Response data:', data);
 
-                    if (response.ok && data.success) {
-                        alert('✅ Session terminated successfully');
-                        loadSessions(); // Refresh the list
-                    } else {
-                        alert('❌ Failed to terminate session: ' + (data.error || 'Unknown error'));
-                    }
-                } catch (error) {
-                    console.error('Error terminating session:', error);
-                    alert('❌ Error terminating session: ' + error.message);
+                if (response.ok && data.success) {
+                    alert('✅ Session terminated successfully!\n\nSession ID: ' + sessionId);
+                    loadSessions(); // Refresh the list
+                } else {
+                    alert('❌ Failed to terminate session:\n\n' + (data.error || 'Unknown error'));
                 }
+            } catch (error) {
+                console.error('❌ Error terminating session:', error);
+                alert('❌ Network error terminating session:\n\n' + error.message);
             }
         }
 
