@@ -769,6 +769,26 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
 
+        // Track session end when browser closes or page unloads
+        window.addEventListener('beforeunload', async (e) => {
+            const sessionId = localStorage.getItem('sessionId');
+            const itsId = localStorage.getItem('studentItsId');
+            
+            if (sessionId && itsId) {
+                // Use sendBeacon for reliable delivery even during page unload
+                const API_URL = 'https://5wgk4koei8.execute-api.us-east-1.amazonaws.com/prod';
+                const data = JSON.stringify({
+                    sessionId,
+                    itsId,
+                    endReason: 'browser_closed'
+                });
+                
+                // sendBeacon is specifically designed for this use case
+                navigator.sendBeacon(`${API_URL}/api/session/end`, data);
+                console.log('📤 Session end signal sent');
+            }
+        });
+
         // Hidden admin unlock - 5 clicks on footer within 3 seconds
         let unlockClickCount = 0;
         let unlockClickTimer = null;

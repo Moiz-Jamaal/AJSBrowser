@@ -280,6 +280,7 @@
                             <th>Status</th>
                             <th>Activities</th>
                             <th>Screenshots</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="sessionsBody">
@@ -395,6 +396,16 @@
                     <td><span class="status-badge status-${session.status}">${session.status.toUpperCase()}</span></td>
                     <td>${session.activity_count || 0}</td>
                     <td>${session.screenshot_count || 0}</td>
+                    <td>
+                        <button onclick="terminateSession('${session.session_id}', '${session.its_id}')" 
+                                style="background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 0.85em; margin-right: 5px;">
+                            🛑 Terminate
+                        </button>
+                        <button onclick="viewDetails('${session.session_id}')" 
+                                style="background: #17a2b8; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 0.85em;">
+                            👁️ Details
+                        </button>
+                    </td>
                 `;
 
                 tbody.appendChild(tr);
@@ -404,6 +415,45 @@
             document.getElementById('activeSessions').textContent = sessions.length;
             document.getElementById('totalActivities').textContent = totalActivities;
             document.getElementById('totalScreenshots').textContent = totalScreenshots;
+        }
+
+        // Terminate session
+        async function terminateSession(sessionId, itsId) {
+            const reason = prompt('Enter reason for termination (optional):');
+            
+            if (confirm(`Are you sure you want to terminate session for ITS ID: ${itsId}?`)) {
+                const token = checkAuth();
+                if (!token) return;
+
+                try {
+                    const response = await fetch(`${API_URL}/api/session/terminate`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ sessionId, reason })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok && data.success) {
+                        alert('✅ Session terminated successfully');
+                        loadSessions(); // Refresh the list
+                    } else {
+                        alert('❌ Failed to terminate session: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Error terminating session:', error);
+                    alert('❌ Error terminating session: ' + error.message);
+                }
+            }
+        }
+
+        // View session details
+        function viewDetails(sessionId) {
+            alert(`Session Details Feature\n\nSession ID: ${sessionId}\n\nThis feature will show:\n- Complete session timeline\n- All activities logged\n- Screenshots captured\n- System information\n- Violations detected\n\n(Feature coming soon)`);
+            // TODO: Implement detailed view modal
         }
 
         // Logout

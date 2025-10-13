@@ -103,6 +103,14 @@ exports.handler = async (event) => {
     if (path === '/api/admin/sessions' && method === 'GET') {
       return await getAdminSessions(db, event);
     }
+    
+    if (path === '/api/session/end' && method === 'POST') {
+      return await endSession(db, body);
+    }
+    
+    if (path === '/api/session/terminate' && method === 'POST') {
+      return await terminateSession(db, body, event);
+    }
 
     // 404 Not Found
     return {
@@ -346,6 +354,116 @@ async function getAdminSessions(db, event) {
     body: JSON.stringify({
       success: true,
       sessions: rows
+    })
+  };
+}
+
+async function endSession(db, body) {
+  const { sessionId, itsId, endReason } = body;
+
+  if (!sessionId) {
+    return {
+      statusCode: 400,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Session ID required' })
+    };
+  }
+
+  await db.execute(
+    'UPDATE exam_remote_sessions SET status = ?, end_time = NOW() WHERE session_id = ?',
+    ['ended', sessionId]
+  );
+
+  // Log the session end activity
+  if (itsId) {
+    await db.execute(
+      'INSERT INTO exam_activity_logs (session_id, its_id, activity_type, description, timestamp) VALUES (?, ?, ?, ?, NOW())',
+      [sessionId, itsId, 'logout', endReason || 'Normal exit']
+    );
+  }
+
+  return {
+    statusCode: 200,
+    headers: corsHeaders,
+    body: JSON.stringify({
+      success: true,
+      message: 'Session ended successfully'
+    })
+  };
+}
+
+async function terminateSession(db, body, event) {
+  // Verify admin token
+  const authHeader = event.headers.authorization || event.headers.Authorization;
+  const token = authHeader?.replace('Bearer ', '');
+
+  if (!token) {
+    return {
+      statusCode: 401,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Unauthorized' })
+    };
+  }
+
+  // Verify admin token
+  const [adminSessions] = await db.execute(
+    'SELECT * FROM exam_admin_sessions WHERE session_token = ? AND expires_at > NOW()',
+    [token]
+  );
+
+  if (adminSessions.length === 0) {
+    return {
+      statusCode: 401,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Invalid or expired token' })
+    };
+  }
+
+  const { sessionId, reason } = body;
+
+  if (!sessionId) {
+    return {
+      statusCode: 400,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Session ID required' })
+    };
+  }
+
+  // Get session details
+  const [sessions] = await db.execute(
+    'SELECT * FROM exam_remote_sessions WHERE session_id = ?',
+    [sessionId]
+  );
+
+  if (sessions.length === 0) {
+    return {
+      statusCode: 404,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Session not found' })
+    };
+  }
+
+  const session = sessions[0];
+
+  // Update session status to terminated
+  await db.execute(
+    'UPDATE exam_remote_sessions SET status = ?, end_time = NOW() WHERE session_id = ?',
+    ['terminated', sessionId]
+  );
+
+  // Log the termination
+  await db.execute(
+    'INSERT INTO exam_activity_logs (session_id, its_id, activity_type, description, timestamp) VALUES (?, ?, ?, ?, NOW())',
+    [sessionId, session.its_id, 'admin_access', `Admin terminated session. Reason: ${reason || 'Not specified'}`]
+  );
+
+  return {
+    statusCode: 200,
+    headers: corsHeaders,
+    body: JSON.stringify({
+      success: true,
+      message: 'Session terminated by admin',
+      sessionId
     })
   };
 }
