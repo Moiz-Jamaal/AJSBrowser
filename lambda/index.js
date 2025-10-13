@@ -462,10 +462,10 @@ async function terminateSession(db, body, event) {
 
   const session = sessions[0];
 
-  // Update session status to terminated
+  // Update session status to ended (terminated by admin)
   await db.execute(
     'UPDATE exam_remote_sessions SET status = ?, end_time = NOW() WHERE session_id = ?',
-    ['terminated', sessionId]
+    ['ended', sessionId]
   );
 
   // Log the termination
