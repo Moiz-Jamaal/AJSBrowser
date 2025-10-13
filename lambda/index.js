@@ -111,6 +111,11 @@ exports.handler = async (event) => {
     if (path === '/api/session/terminate' && method === 'POST') {
       return await terminateSession(db, body, event);
     }
+    
+    if (path.startsWith('/api/screenshots/') && method === 'GET') {
+      const sessionId = path.split('/').pop();
+      return await getScreenshots(db, sessionId, event);
+    }
 
     // 404 Not Found
     return {
@@ -464,6 +469,54 @@ async function terminateSession(db, body, event) {
       success: true,
       message: 'Session terminated by admin',
       sessionId
+    })
+  };
+}
+
+// ==================== GET SCREENSHOTS ====================
+async function getScreenshots(db, sessionId, event) {
+  // Verify admin token
+  const authHeader = event.headers.authorization || event.headers.Authorization;
+  const token = authHeader?.replace('Bearer ', '');
+
+  if (!token) {
+    return {
+      statusCode: 401,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Unauthorized - Token required' })
+    };
+  }
+
+  // Verify admin session
+  const [adminSessions] = await db.execute(
+    'SELECT * FROM exam_admin_sessions WHERE session_token = ? AND expires_at > NOW()',
+    [token]
+  );
+
+  if (adminSessions.length === 0) {
+    return {
+      statusCode: 401,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Invalid or expired token' })
+    };
+  }
+
+  // Get screenshots for session
+  const [screenshots] = await db.execute(
+    `SELECT id, session_id, its_id, screenshot_data, captured_at 
+     FROM exam_screenshots 
+     WHERE session_id = ? 
+     ORDER BY captured_at DESC`,
+    [sessionId]
+  );
+
+  return {
+    statusCode: 200,
+    headers: corsHeaders,
+    body: JSON.stringify({
+      success: true,
+      count: screenshots.length,
+      screenshots: screenshots
     })
   };
 }
