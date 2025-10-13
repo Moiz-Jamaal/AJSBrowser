@@ -401,6 +401,10 @@
                                 style="background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 0.85em; margin-right: 5px;">
                             🛑 Terminate
                         </button>
+                        <button onclick="viewRemoteScreen('${session.session_id}', '${session.its_id}')" 
+                                style="background: #6f42c1; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 0.85em; margin-right: 5px;">
+                            🖥️ Remote View
+                        </button>
                         <button onclick="viewScreenshots('${session.session_id}', '${session.its_id}')" 
                                 style="background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 0.85em; margin-right: 5px;">
                             📸 Screenshots
@@ -452,6 +456,102 @@
                     alert('❌ Error terminating session: ' + error.message);
                 }
             }
+        }
+
+        // View remote screen (latest screenshot with auto-refresh)
+        async function viewRemoteScreen(sessionId, itsId) {
+            const token = checkAuth();
+            if (!token) return;
+            
+            // Create remote viewing modal
+            const modal = document.createElement('div');
+            modal.id = 'remote-screen-modal';
+            modal.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0,0,0,0.95); z-index: 10000; padding: 20px;
+            `;
+            
+            modal.innerHTML = `
+                <div style="max-width: 1600px; margin: 0 auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div style="color: white;">
+                            <h2 style="margin: 0;">🖥️ Remote Screen - ITS ID: ${itsId}</h2>
+                            <p style="margin: 5px 0 0 0; font-size: 0.9em; opacity: 0.8;">Session ID: ${sessionId} • Auto-refreshing every 5 seconds</p>
+                        </div>
+                        <button onclick="document.getElementById('remote-screen-modal').remove(); clearInterval(window.remoteScreenInterval);" 
+                                style="background: #dc3545; color: white; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-size: 1em; font-weight: bold;">
+                            ✕ Close
+                        </button>
+                    </div>
+                    <div id="remote-screen-container" style="background: #000; border: 3px solid #6f42c1; border-radius: 10px; padding: 20px; text-align: center; min-height: 600px;">
+                        <p style="color: white; font-size: 1.2em;">Loading remote screen...</p>
+                    </div>
+                    <div style="color: white; margin-top: 15px; text-align: center; font-size: 0.9em; opacity: 0.8;">
+                        <p>💡 This shows the student's latest screenshot. Updates automatically every 5 seconds.</p>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Function to load latest screenshot
+            async function loadLatestScreenshot() {
+                try {
+                    const response = await fetch(`${API_URL}/api/screenshots/${sessionId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    
+                    const data = await response.json();
+                    const container = document.getElementById('remote-screen-container');
+                    
+                    if (!container) return; // Modal was closed
+                    
+                    if (data.success && data.screenshots && data.screenshots.length > 0) {
+                        const latestScreenshot = data.screenshots[0]; // First one is most recent
+                        const captureTime = new Date(latestScreenshot.capture_time).toLocaleString();
+                        
+                        container.innerHTML = `
+                            <div style="position: relative;">
+                                <img src="${latestScreenshot.screenshot_data}" 
+                                     style="width: 100%; border-radius: 5px; cursor: pointer;" 
+                                     onclick="window.open('${latestScreenshot.screenshot_data}', '_blank')"
+                                     title="Click to open full size" />
+                                <div style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px 15px; border-radius: 5px; font-size: 0.9em;">
+                                    <strong>📸 Captured:</strong> ${captureTime}
+                                </div>
+                                <div style="position: absolute; top: 10px; left: 10px; background: rgba(111,66,193,0.9); color: white; padding: 10px 15px; border-radius: 5px; font-size: 0.9em;">
+                                    🔴 LIVE • Auto-refresh: 5s
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        container.innerHTML = `
+                            <div style="padding: 50px; color: white;">
+                                <p style="font-size: 1.5em; margin-bottom: 10px;">📸</p>
+                                <p style="font-size: 1.2em;">No screenshots captured yet for this session.</p>
+                                <p style="font-size: 0.9em; opacity: 0.7; margin-top: 10px;">Waiting for student to start exam...</p>
+                            </div>
+                        `;
+                    }
+                } catch (error) {
+                    const container = document.getElementById('remote-screen-container');
+                    if (container) {
+                        container.innerHTML = `
+                            <div style="padding: 50px; color: #dc3545;">
+                                <p style="font-size: 1.5em; margin-bottom: 10px;">❌</p>
+                                <p style="font-size: 1.2em;">Error loading remote screen</p>
+                                <p style="font-size: 0.9em; opacity: 0.7; margin-top: 10px;">${error.message}</p>
+                            </div>
+                        `;
+                    }
+                }
+            }
+            
+            // Load immediately
+            loadLatestScreenshot();
+            
+            // Auto-refresh every 5 seconds
+            window.remoteScreenInterval = setInterval(loadLatestScreenshot, 5000);
         }
 
         // View screenshots for a session
@@ -507,7 +607,7 @@
                         <img src="${ss.screenshot_data}" style="width: 100%; border-radius: 5px; margin-bottom: 10px; cursor: pointer;" 
                              onclick="window.open('${ss.screenshot_data}', '_blank')" />
                         <p style="text-align: center; margin: 5px 0; font-size: 0.9em; color: #666;">
-                            <strong>Time:</strong> ${new Date(ss.captured_at).toLocaleString()}
+                            <strong>Time:</strong> ${new Date(ss.capture_time).toLocaleString()}
                         </p>
                         <p style="text-align: center; margin: 0; font-size: 0.85em; color: #999;">
                             Screenshot ID: ${ss.id}

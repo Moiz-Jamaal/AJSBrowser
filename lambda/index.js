@@ -503,10 +503,10 @@ async function getScreenshots(db, sessionId, event) {
 
   // Get screenshots for session
   const [screenshots] = await db.execute(
-    `SELECT id, session_id, its_id, screenshot_data, captured_at 
+    `SELECT id, session_id, its_id, screenshot_data, capture_time 
      FROM exam_screenshots 
      WHERE session_id = ? 
-     ORDER BY captured_at DESC`,
+     ORDER BY capture_time DESC`,
     [sessionId]
   );
 
