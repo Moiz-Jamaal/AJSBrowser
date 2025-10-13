@@ -300,13 +300,15 @@ async function adminLogin(db, body) {
 }
 
 async function getAdminSessions(db, event) {
-  const token = event.headers.Authorization?.replace('Bearer ', '');
+  // API Gateway v2 lowercases all headers
+  const authHeader = event.headers.authorization || event.headers.Authorization;
+  const token = authHeader?.replace('Bearer ', '');
 
   if (!token) {
     return {
       statusCode: 401,
       headers: corsHeaders,
-      body: JSON.stringify({ error: 'Unauthorized' })
+      body: JSON.stringify({ error: 'Unauthorized - No token provided' })
     };
   }
 

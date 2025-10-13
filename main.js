@@ -301,8 +301,13 @@ function createWindow() {
     // Allow localhost for admin panel (when admin is unlocked)
     const isLocalhost = url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:');
     const isAllowedDomain = url.startsWith(ALLOWED_DOMAIN);
+    const isLocalFile = url.startsWith('file://');
     
-    if (!isAllowedDomain && !(isLocalhost && adminMenuUnlocked)) {
+    // Allow local files (index.html, adminlogin.html, admin.html) when admin is unlocked or it's the index page
+    const isAdminFile = url.includes('adminlogin.html') || url.includes('admin.html');
+    const isIndexFile = url.includes('index.html');
+    
+    if (!isAllowedDomain && !isIndexFile && !(isLocalhost && adminMenuUnlocked) && !(isLocalFile && (isIndexFile || (isAdminFile && adminMenuUnlocked)))) {
       event.preventDefault();
       dialog.showErrorBox(
         'Navigation Blocked',
@@ -395,15 +400,31 @@ app.on('web-contents-created', (event, contents) => {
   });
 
   contents.on('will-navigate', (event, navigationUrl) => {
-    const parsedUrl = new URL(navigationUrl);
-    if (!navigationUrl.startsWith(ALLOWED_DOMAIN)) {
+    const isLocalFile = navigationUrl.startsWith('file://');
+    const isLocalhost = navigationUrl.startsWith('http://localhost:') || navigationUrl.startsWith('http://127.0.0.1:');
+    const isAdminFile = navigationUrl.includes('adminlogin.html') || navigationUrl.includes('admin.html');
+    const isIndexFile = navigationUrl.includes('index.html');
+    
+    // Allow local files when admin is unlocked or it's the index page
+    if (!navigationUrl.startsWith(ALLOWED_DOMAIN) && 
+        !isIndexFile && 
+        !(isLocalFile && (isIndexFile || (isAdminFile && adminMenuUnlocked))) &&
+        !(isLocalhost && adminMenuUnlocked)) {
       event.preventDefault();
     }
   });
 
   contents.on('will-redirect', (event, navigationUrl) => {
-    const parsedUrl = new URL(navigationUrl);
-    if (!navigationUrl.startsWith(ALLOWED_DOMAIN)) {
+    const isLocalFile = navigationUrl.startsWith('file://');
+    const isLocalhost = navigationUrl.startsWith('http://localhost:') || navigationUrl.startsWith('http://127.0.0.1:');
+    const isAdminFile = navigationUrl.includes('adminlogin.html') || navigationUrl.includes('admin.html');
+    const isIndexFile = navigationUrl.includes('index.html');
+    
+    // Allow local files when admin is unlocked or it's the index page
+    if (!navigationUrl.startsWith(ALLOWED_DOMAIN) && 
+        !isIndexFile && 
+        !(isLocalFile && (isIndexFile || (isAdminFile && adminMenuUnlocked))) &&
+        !(isLocalhost && adminMenuUnlocked)) {
       event.preventDefault();
     }
   });
