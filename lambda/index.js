@@ -179,7 +179,13 @@ async function verifyStudent(db, body) {
 }
 
 async function createSession(db, body) {
+  console.log('📝 RAW BODY:', JSON.stringify(body, null, 2));
+  
   const { itsId, studentName, machineInfo } = body;
+  
+  console.log('📝 EXTRACTED:', JSON.stringify({ itsId, studentName, machineInfo }, null, 2));
+  console.log('📝 studentName type:', typeof studentName, 'value:', studentName);
+  console.log('📝 machineInfo type:', typeof machineInfo, 'value:', machineInfo);
   
   if (!itsId) {
     return {
@@ -211,17 +217,23 @@ async function createSession(db, body) {
 
   const sessionId = 'SESSION_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
+  // Ensure all values are properly defined
+  const studentNameValue = studentName ? String(studentName) : 'Unknown';
+  const userAgentValue = machineInfo?.userAgent ? String(machineInfo.userAgent) : 'Unknown';
+  const platformValue = machineInfo?.platform ? String(machineInfo.platform) : 'Unknown';
+  const screenResValue = machineInfo?.screenResolution ? String(machineInfo.screenResolution) : 'Unknown';
+
   await db.execute(
     'INSERT INTO exam_remote_sessions (session_id, its_id, student_name, ip_address, machine_info, os_info, screen_resolution, browser_version, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [
       sessionId,
       itsId,
-      studentName || 'Unknown',
+      studentNameValue,
       'global',
-      machineInfo?.userAgent || 'Unknown',
-      machineInfo?.platform || 'Unknown',
-      machineInfo?.screenResolution || 'Unknown',
-      machineInfo?.userAgent || 'Unknown',
+      userAgentValue,
+      platformValue,
+      screenResValue,
+      userAgentValue,
       'active'
     ]
   );
