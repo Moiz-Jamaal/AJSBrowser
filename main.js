@@ -568,7 +568,7 @@ ipcMain.handle('remote-command', async (event, command) => {
 ipcMain.handle('simulate-keypress', async (event, { key, modifiers }) => {
   try {
     // Use robotjs for keyboard simulation
-    const robot = require('robotjs');
+    const robot = require('@jitsi/robotjs');
     
     // Press modifiers
     if (modifiers) {
@@ -598,7 +598,7 @@ ipcMain.handle('simulate-keypress', async (event, { key, modifiers }) => {
 // Handle mouse click simulation
 ipcMain.handle('simulate-mouse-click', async (event, { x, y, button }) => {
   try {
-    const robot = require('robotjs');
+    const robot = require('@jitsi/robotjs');
     
     // Move to position
     robot.moveMouse(x, y);
@@ -615,7 +615,7 @@ ipcMain.handle('simulate-mouse-click', async (event, { x, y, button }) => {
 // Handle mouse move simulation
 ipcMain.handle('simulate-mouse-move', async (event, { x, y }) => {
   try {
-    const robot = require('robotjs');
+    const robot = require('@jitsi/robotjs');
     robot.moveMouse(x, y);
     return { success: true };
   } catch (error) {
@@ -626,7 +626,7 @@ ipcMain.handle('simulate-mouse-move', async (event, { x, y }) => {
 // Get screen size
 ipcMain.handle('get-screen-size', async (event) => {
   try {
-    const robot = require('robotjs');
+    const robot = require('@jitsi/robotjs');
     const size = robot.getScreenSize();
     return { success: true, width: size.width, height: size.height };
   } catch (error) {
