@@ -189,22 +189,44 @@ async function createSession(db, body) {
     };
   }
 
+  // Check if there's already an active session for this student
+  const [existingSessions] = await db.execute(
+    'SELECT session_id FROM exam_remote_sessions WHERE its_id = ? AND status = ?',
+    [itsId, 'active']
+  );
+
+  if (existingSessions.length > 0) {
+    console.log(`⚠️ Active session already exists for ${itsId}: ${existingSessions[0].session_id}`);
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: JSON.stringify({
+        success: true,
+        sessionId: existingSessions[0].session_id,
+        itsId,
+        message: 'Using existing active session'
+      })
+    };
+  }
+
   const sessionId = 'SESSION_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
   await db.execute(
-    'INSERT INTO exam_remote_sessions (session_id, its_id, ip_address, machine_info, os_info, screen_resolution, start_time, status) VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)',
+    'INSERT INTO exam_remote_sessions (session_id, its_id, student_name, ip_address, machine_info, os_info, screen_resolution, browser_version, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [
       sessionId,
       itsId,
+      studentName || 'Unknown',
       'global',
       machineInfo?.userAgent || 'Unknown',
       machineInfo?.platform || 'Unknown',
       machineInfo?.screenResolution || 'Unknown',
+      machineInfo?.userAgent || 'Unknown',
       'active'
     ]
   );
 
-  console.log(`✅ Session created: ${sessionId} for ${itsId}`);
+  console.log(`✅ Session created: ${sessionId} for ${itsId} (${studentName})`);
 
   return {
     statusCode: 200,

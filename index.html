@@ -745,6 +745,9 @@
                 // Continue anyway - offline mode
             }
             
+            // Set flag to indicate we're navigating to exam (not closing)
+            sessionStorage.setItem('navigatingToExam', 'true');
+            
             // Navigate to exam portal
             window.location.href = 'https://exams.jameasaifiyah.org';
         });
@@ -850,6 +853,12 @@
 
         // Track session end when browser closes or page unloads
         window.addEventListener('beforeunload', async (e) => {
+            // Don't end session if we're just navigating to the exam portal
+            if (sessionStorage.getItem('navigatingToExam') === 'true') {
+                console.log('🔄 Navigating to exam portal - session remains active');
+                return;
+            }
+            
             const sessionId = localStorage.getItem('sessionId');
             const itsId = localStorage.getItem('studentItsId');
             
