@@ -37,7 +37,8 @@ exports.handler = async (event) => {
   console.log('Event:', JSON.stringify(event, null, 2));
 
   // Handle OPTIONS for CORS
-  if (event.httpMethod === 'OPTIONS') {
+  const requestMethod = event.httpMethod || event.requestContext?.http?.method || 'GET';
+  if (requestMethod === 'OPTIONS') {
     return {
       statusCode: 200,
       headers: corsHeaders,
@@ -45,18 +46,33 @@ exports.handler = async (event) => {
     };
   }
 
-  // Handle both /api/... and /prod/api/... paths
-  let path = event.path || event.rawPath || '';
-  // Remove /prod prefix if present
-  path = path.replace(/^\/prod/, '');
-  
-  const method = event.httpMethod || event.requestContext?.http?.method || 'GET';
-  const body = event.body ? JSON.parse(event.body) : {};
-
-  console.log('Processed path:', path);
-  console.log('Method:', method);
-
   try {
+    // Handle both /api/... and /prod/api/... paths
+    let path = event.path || event.rawPath || '';
+    // Remove /prod prefix if present
+    path = path.replace(/^\/prod/, '');
+    
+    const method = requestMethod;
+    
+    // Parse body - handle both string and object
+    let body = {};
+    if (event.body) {
+      try {
+        body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+      } catch (e) {
+        console.error('Failed to parse body:', e);
+        return {
+          statusCode: 400,
+          headers: corsHeaders,
+          body: JSON.stringify({ error: 'Invalid JSON in request body' })
+        };
+      }
+    }
+
+    console.log('Processed path:', path);
+    console.log('Method:', method);
+    console.log('Body:', body);
+
     const db = getPool();
 
     // Route handling
