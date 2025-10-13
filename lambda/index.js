@@ -276,11 +276,11 @@ async function adminLogin(db, body) {
   }
 
   // Create session token
-  const token = Buffer.from(`${admin.admin_id}:${Date.now()}`).toString('base64');
+  const token = Buffer.from(`${admin.id}:${Date.now()}`).toString('base64');
 
   await db.execute(
     'INSERT INTO exam_admin_sessions (admin_id, session_token, ip_address, login_time, expires_at) VALUES (?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 24 HOUR))',
-    [admin.admin_id, token, 'global']
+    [admin.id, token, 'global']
   );
 
   return {
@@ -290,7 +290,7 @@ async function adminLogin(db, body) {
       success: true,
       token,
       admin: {
-        id: admin.admin_id,
+        id: admin.id,
         username: admin.username,
         fullName: admin.full_name,
         role: admin.role
