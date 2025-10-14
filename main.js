@@ -240,9 +240,9 @@ function createWindow() {
   const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSExams/1.0.0 Safari/537.36';
   mainWindow.webContents.setUserAgent(userAgent);
 
-  // Automatically grant camera and microphone permissions
+  // Automatically grant camera, microphone, and display capture permissions (for Zoho SalesIQ)
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture'];
+    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture'];
     
     if (allowedPermissions.includes(permission)) {
       callback(true); // Grant permission
@@ -388,9 +388,9 @@ app.on('web-contents-created', (event, contents) => {
   const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSExams/1.0.0 Safari/537.36';
   contents.setUserAgent(userAgent);
 
-  // Grant media permissions automatically
+  // Grant media permissions automatically (including display capture for Zoho)
   contents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture'];
+    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture'];
     
     if (allowedPermissions.includes(permission)) {
       callback(true);
