@@ -108,6 +108,11 @@ exports.handler = async (event) => {
       return await endSession(db, body);
     }
     
+    if (path === '/api/session/status' && method === 'GET') {
+      const sessionId = event.queryStringParameters?.sessionId;
+      return await getSessionStatus(db, sessionId);
+    }
+    
     if (path === '/api/session/terminate' && method === 'POST') {
       return await terminateSession(db, body, event);
     }
@@ -439,6 +444,39 @@ async function endSession(db, body) {
     body: JSON.stringify({
       success: true,
       message: 'Session ended successfully'
+    })
+  };
+}
+
+async function getSessionStatus(db, sessionId) {
+  if (!sessionId) {
+    return {
+      statusCode: 400,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Session ID required' })
+    };
+  }
+
+  const [sessions] = await db.execute(
+    'SELECT status, end_time FROM exam_remote_sessions WHERE session_id = ?',
+    [sessionId]
+  );
+
+  if (sessions.length === 0) {
+    return {
+      statusCode: 404,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Session not found' })
+    };
+  }
+
+  return {
+    statusCode: 200,
+    headers: corsHeaders,
+    body: JSON.stringify({
+      success: true,
+      status: sessions[0].status,
+      endTime: sessions[0].end_time
     })
   };
 }
