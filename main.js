@@ -4,6 +4,12 @@ const os = require('os');
 const autoUpdater = require('./auto-updater');
 const remoteServerManager = require('./server-manager');
 
+// Enable command line switches for screen sharing support
+app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
+app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
+app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
+app.commandLine.appendSwitch('auto-select-desktop-capture-source', 'AJSExams Browser');
+
 // Allowed domain pattern
 const ALLOWED_DOMAIN = 'https://exams.jameasaifiyah.org';
 
@@ -194,7 +200,7 @@ function createWindow() {
       allowRunningInsecureContent: false,
       plugins: false,
       enableRemoteModule: false,
-      sandbox: true
+      sandbox: false // MUST be false for screen sharing to work with Zoho Assist
     },
     autoHideMenuBar: false, // Keep menu bar visible
     fullscreenable: true,
@@ -240,21 +246,67 @@ function createWindow() {
   const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSExams/1.0.0 Safari/537.36';
   mainWindow.webContents.setUserAgent(userAgent);
 
-  // Automatically grant camera, microphone, and display capture permissions (for Zoho SalesIQ)
+  // Handle media access requests (for screen sharing)
+  mainWindow.webContents.on('media-access-requested', (event, request, callback) => {
+    console.log('🎥 Media access requested:', request.mediaType);
+    // Always allow for Zoho Assist screen sharing
+    callback(true);
+  });
+
+  // Automatically grant camera, microphone, and display capture permissions (for Zoho SalesIQ/Assist)
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture'];
     
+    console.log('🔐 Permission requested:', permission);
+    
     if (allowedPermissions.includes(permission)) {
+      console.log('✅ Permission granted:', permission);
       callback(true); // Grant permission
     } else {
+      console.log('❌ Permission denied:', permission);
       callback(false); // Deny other permissions
     }
+  });
+
+  // Also handle permission checks (for ongoing permission queries)
+  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture'];
+    
+    console.log('🔍 Permission check:', permission, 'from', requestingOrigin);
+    
+    if (allowedPermissions.includes(permission)) {
+      console.log('✅ Permission check passed:', permission);
+      return true;
+    }
+    
+    console.log('❌ Permission check failed:', permission);
+    return false;
   });
 
   // Handle file dialogs - temporarily lower window priority so file picker appears on top
   mainWindow.webContents.on('will-attach-webview', (event, webPreferences, params) => {
     // Allow file selection dialogs to appear
     webPreferences.enableBlinkFeatures = 'FileSystemAccessAPI';
+  });
+
+  // Auto-approve screen sharing for Zoho Assist - Select entire screen automatically
+  mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
+    console.log('🖥️ Display media (screen share) requested - Auto-approving entire screen');
+    
+    // Get all available screens
+    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+      if (sources.length > 0) {
+        // Automatically select the first (primary) screen
+        console.log('✅ Auto-selecting primary screen:', sources[0].name);
+        callback({ video: sources[0], audio: 'loopback' }); // Include system audio
+      } else {
+        console.log('⚠️ No screens available');
+        callback({});
+      }
+    }).catch((error) => {
+      console.error('❌ Error getting screens:', error);
+      callback({});
+    });
   });
 
   // Create menu with hidden admin features
@@ -272,7 +324,9 @@ function createWindow() {
           webPreferences: {
             devTools: false,
             contextIsolation: true,
-            nodeIntegration: false
+            nodeIntegration: false,
+            sandbox: false, // MUST be false for screen sharing to work
+            preload: path.join(__dirname, 'preload.js')
           }
         }
       };
@@ -392,11 +446,57 @@ app.on('web-contents-created', (event, contents) => {
   contents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture'];
     
+    console.log('🔐 [New Window] Permission requested:', permission);
+    
     if (allowedPermissions.includes(permission)) {
+      console.log('✅ [New Window] Permission granted:', permission);
       callback(true);
     } else {
+      console.log('❌ [New Window] Permission denied:', permission);
       callback(false);
     }
+  });
+
+  // Also handle permission checks for new windows
+  contents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture'];
+    
+    console.log('🔍 [New Window] Permission check:', permission, 'from', requestingOrigin);
+    
+    if (allowedPermissions.includes(permission)) {
+      console.log('✅ [New Window] Permission check passed:', permission);
+      return true;
+    }
+    
+    console.log('❌ [New Window] Permission check failed:', permission);
+    return false;
+  });
+
+  // Handle media access requests for new windows (for screen sharing)
+  contents.on('media-access-requested', (event, request, callback) => {
+    console.log('🎥 [New Window] Media access requested:', request.mediaType);
+    // Always allow for Zoho Assist screen sharing
+    callback(true);
+  });
+
+  // Auto-approve screen sharing for new windows - Select entire screen automatically
+  contents.session.setDisplayMediaRequestHandler((request, callback) => {
+    console.log('🖥️ [New Window] Display media (screen share) requested - Auto-approving entire screen');
+    
+    // Get all available screens
+    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+      if (sources.length > 0) {
+        // Automatically select the first (primary) screen
+        console.log('✅ [New Window] Auto-selecting primary screen:', sources[0].name);
+        callback({ video: sources[0], audio: 'loopback' }); // Include system audio
+      } else {
+        console.log('⚠️ [New Window] No screens available');
+        callback({});
+      }
+    }).catch((error) => {
+      console.error('❌ [New Window] Error getting screens:', error);
+      callback({});
+    });
   });
 
   contents.on('will-navigate', (event, navigationUrl) => {
@@ -631,6 +731,19 @@ ipcMain.handle('get-screen-size', async (event) => {
     return { success: true, width: size.width, height: size.height };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+});
+
+// Handle desktop capturer for screen sharing - Auto-approve entire screen
+ipcMain.handle('get-desktop-sources', async (event, opts) => {
+  try {
+    console.log('🖥️ Desktop sources requested for screen sharing');
+    const sources = await desktopCapturer.getSources(opts);
+    console.log('✅ Desktop sources available:', sources.length);
+    return sources;
+  } catch (error) {
+    console.error('❌ Error getting desktop sources:', error);
+    return [];
   }
 });
 

@@ -13,7 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   simulateKeyPress: (key, modifiers) => ipcRenderer.invoke('simulate-keypress', { key, modifiers }),
   simulateMouseClick: (x, y, button) => ipcRenderer.invoke('simulate-mouse-click', { x, y, button }),
   simulateMouseMove: (x, y) => ipcRenderer.invoke('simulate-mouse-move', { x, y }),
-  getScreenSize: () => ipcRenderer.invoke('get-screen-size')
+  getScreenSize: () => ipcRenderer.invoke('get-screen-size'),
+  // Desktop capturer for Zoho Assist screen sharing - via IPC for better control
+  getDesktopSources: (opts) => ipcRenderer.invoke('get-desktop-sources', opts)
 });
 
 window.addEventListener('DOMContentLoaded', () => {

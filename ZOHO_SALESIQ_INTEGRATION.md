@@ -140,10 +140,35 @@ t.parentNode.insertBefore(s,t);
 - Verify `displayCapture` is in the allowed permissions list
 - Check that Zoho domains are in the CSP
 
+### Screen Share Permission Declined (FIXED)
+**Issue**: Zoho Assist shows "Screen share permission declined" even when allowed.
+
+**Root Cause**: Electron requires both `setPermissionRequestHandler` AND `setPermissionCheckHandler` plus `media-access-requested` event handler for screen sharing to work.
+
+**Solution Applied**:
+1. Added `setPermissionCheckHandler` to both main window and new windows
+2. Added `media-access-requested` event handler for both contexts
+3. Exposed `desktopCapturer.getSources()` in preload.js
+4. Added console logging for debugging permission requests
+
+**Files Modified**:
+- `main.js`: Added permission check handlers and media access handlers
+- `preload.js`: Exposed desktop capturer API
+
 ### WebSocket Connection Fails
 - Verify WSS (WebSocket Secure) domains are in CSP
 - Check firewall settings on the exam server
 - Ensure port 443 is open for WebSocket connections
+
+### Testing Screen Share
+1. Open browser and navigate to exam portal
+2. Open Zoho SalesIQ chat widget
+3. Start a screen share session
+4. Check Developer Console (if accessible) for permission logs:
+   - Should see: `🔐 Permission requested: displayCapture`
+   - Should see: `✅ Permission granted: displayCapture`
+   - Should see: `🎥 Media access requested: screen`
+5. Screen sharing should work without "permission declined" error
 
 ## Production Deployment
 
