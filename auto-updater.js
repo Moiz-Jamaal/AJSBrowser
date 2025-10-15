@@ -172,15 +172,24 @@ class AutoUpdater {
       let assetName = '';
       
       if (platform === 'darwin') {
-        // macOS
-        const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-        assetName = release.assets.find(asset => 
-          asset.name.includes('.dmg') && asset.name.includes(arch)
-        )?.name;
+        // macOS - GitHub converts spaces to dots in filenames
+        const arch = process.arch;
+        if (arch === 'arm64') {
+          // Look for arm64 DMG (GitHub may convert spaces to dots)
+          assetName = release.assets.find(asset => 
+            asset.name.match(/AJS[.\s]Exam[.\s]Browser.*arm64\.dmg$/i)
+          )?.name;
+        } else {
+          // Look for Intel DMG (not arm64)
+          assetName = release.assets.find(asset => 
+            asset.name.match(/AJS[.\s]Exam[.\s]Browser.*\.dmg$/i) && 
+            !asset.name.includes('arm64')
+          )?.name;
+        }
       } else if (platform === 'win32') {
-        // Windows
+        // Windows - GitHub may convert spaces to dots
         assetName = release.assets.find(asset => 
-          asset.name.includes('.exe') || asset.name.includes('.msi')
+          asset.name.match(/AJS[.\s]Exam[.\s]Browser.*\.(exe|msi)$/i)
         )?.name;
       }
 
