@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, shell, ipcMain, desktopCapturer } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, ipcMain, desktopCapturer, globalShortcut } = require('electron');
 const path = require('path');
 const os = require('os');
 const autoUpdater = require('./auto-updater');
@@ -211,7 +211,9 @@ function createWindow() {
     skipTaskbar: false, // Show in taskbar
     alwaysOnTopLevel: 'pop-up-menu', // Allow system dialogs (file picker) to appear above
     minimizable: false, // Disable minimize button
-    maximizable: false // Disable maximize button
+    maximizable: false, // Disable maximize button
+    // SCREEN CAPTURE PROTECTION
+    contentProtection: true // Prevents screen capture - shows black screen in screenshots/recordings
   });
 
   // Maximize window on startup
@@ -545,6 +547,144 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     createWindow();
 
+    // Block screenshot and screen recording shortcuts
+    const screenshotShortcuts = [
+      // Windows shortcuts
+      'PrintScreen',
+      'Super+PrintScreen',
+      'Alt+PrintScreen',
+      'Super+Shift+S', // Snipping Tool
+      'Super+Alt+PrintScreen',
+      
+      // macOS shortcuts
+      'Command+Shift+3', // Full screenshot
+      'Command+Shift+4', // Region screenshot
+      'Command+Shift+5', // Screenshot toolbar
+      'Command+Shift+6', // Touch Bar screenshot
+      
+      // Cross-platform alternatives
+      'Control+Shift+Print',
+      'CommandOrControl+Shift+3',
+      'CommandOrControl+Shift+4',
+      'CommandOrControl+Shift+5'
+    ];
+
+    screenshotShortcuts.forEach(shortcut => {
+      try {
+        const registered = globalShortcut.register(shortcut, () => {
+          console.log(`🚫 Blocked screenshot shortcut: ${shortcut}`);
+          
+          // Show in-window warning (protected by content protection)
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.executeJavaScript(`
+              (function() {
+                // Remove any existing warning
+                const existing = document.getElementById('screenshot-warning-overlay');
+                if (existing) existing.remove();
+                
+                // Create overlay
+                const overlay = document.createElement('div');
+                overlay.id = 'screenshot-warning-overlay';
+                overlay.style.cssText = \`
+                  position: fixed;
+                  top: 0;
+                  left: 0;
+                  width: 100%;
+                  height: 100%;
+                  background: rgba(0, 0, 0, 0.98);
+                  z-index: 999999999;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                \`;
+                
+                // Create dialog box
+                const dialog = document.createElement('div');
+                dialog.style.cssText = \`
+                  background: white;
+                  border-radius: 12px;
+                  padding: 32px;
+                  max-width: 400px;
+                  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                  text-align: center;
+                \`;
+                
+                dialog.innerHTML = \`
+                  <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                  <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600; color: #1a1a1a;">
+                    Screenshot Blocked
+                  </h2>
+                  <p style="margin: 0 0 12px 0; font-size: 16px; color: #666; line-height: 1.5;">
+                    Screenshots and screen recordings are disabled during the examination.
+                  </p>
+                  <p style="margin: 0 0 24px 0; font-size: 14px; color: #999;">
+                    This activity has been logged for security purposes.
+                  </p>
+                  <button id="close-warning-btn" style="
+                    background: #cccccc;
+                    color: #666;
+                    border: none;
+                    padding: 12px 32px;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    cursor: not-allowed;
+                    width: 100%;
+                    opacity: 0.6;
+                  " disabled>
+                    Please wait <span id="countdown">10</span>s...
+                  </button>
+                \`;
+                
+                overlay.appendChild(dialog);
+                document.body.appendChild(overlay);
+                
+                const btn = document.getElementById('close-warning-btn');
+                const countdownEl = document.getElementById('countdown');
+                let timeLeft = 10;
+                
+                // Countdown timer
+                const countdownInterval = setInterval(() => {
+                  timeLeft--;
+                  countdownEl.textContent = timeLeft;
+                  
+                  if (timeLeft <= 0) {
+                    clearInterval(countdownInterval);
+                    btn.textContent = 'OK';
+                    btn.disabled = false;
+                    btn.style.background = '#007AFF';
+                    btn.style.color = 'white';
+                    btn.style.cursor = 'pointer';
+                    btn.style.opacity = '1';
+                    
+                    // Enable click to close
+                    btn.onclick = () => {
+                      overlay.remove();
+                    };
+                  }
+                }, 1000);
+                
+                // Prevent any attempt to close before countdown
+                overlay.onclick = (e) => {
+                  if (e.target === overlay && timeLeft > 0) {
+                    e.stopPropagation();
+                  }
+                };
+              })();
+            `);
+          }
+        });
+        
+        if (registered) {
+          console.log(`✅ Blocked screenshot shortcut: ${shortcut}`);
+        }
+      } catch (error) {
+        // Some shortcuts may not work on certain platforms
+        console.log(`⚠️ Could not register shortcut: ${shortcut}`);
+      }
+    });
+
     // Start auto-update checks
     autoUpdater.startAutoUpdateChecks();
     console.log('✅ Auto-updater initialized');
@@ -597,6 +737,10 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  // Unregister all global shortcuts
+  globalShortcut.unregisterAll();
+  console.log('✅ Unregistered all global shortcuts');
+  
   // Stop remote server if running
   if (remoteServerManager.getStatus().isRunning) {
     remoteServerManager.stop();
