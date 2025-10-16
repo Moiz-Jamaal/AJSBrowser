@@ -20,6 +20,7 @@ let mainWindow;
 let adminMenuUnlocked = false;
 let unlockClickCount = 0;
 let unlockClickTimer = null;
+let minimizeAllowed = false; // Track if minimize is allowed based on QusID cookie
 
 // Disable hardware acceleration for better compatibility
 app.disableHardwareAcceleration();
@@ -217,10 +218,15 @@ function createWindow() {
   // Ensure window stays on top even when it loses focus
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
 
-  // Prevent window from being minimized
+  // Prevent window from being minimized (unless QusID=16)
   mainWindow.on('minimize', (event) => {
-    event.preventDefault();
-    mainWindow.restore();
+    if (!minimizeAllowed) {
+      event.preventDefault();
+      mainWindow.restore();
+      console.log('🚫 Minimize prevented - QusID not 16');
+    } else {
+      console.log('✅ Minimize allowed - QusID=16');
+    }
   });
 
   // Keep window on top when it's restored or focused
@@ -751,6 +757,24 @@ ipcMain.handle('get-system-info', async (event) => {
 // Handle admin unlock from frontend
 ipcMain.on('unlock-admin-request', (event) => {
   handleUnlockClick();
+});
+
+// Handle allow-minimize request (when QusID=16)
+ipcMain.on('allow-minimize', (event) => {
+  minimizeAllowed = true;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setMinimizable(true);
+    console.log('✅ Minimize enabled - QusID=16 detected');
+  }
+});
+
+// Handle disable-minimize request (when QusID changes)
+ipcMain.on('disable-minimize', (event) => {
+  minimizeAllowed = false;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setMinimizable(false);
+    console.log('🔒 Minimize disabled - QusID changed');
+  }
 });
 
 // All remote monitoring, screenshot capture, and remote control handlers

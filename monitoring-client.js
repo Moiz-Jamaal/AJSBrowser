@@ -27,7 +27,53 @@ class ExamMonitor {
       this.endSession('browser_closed');
     });
 
+    // Check for QusID cookie and enable minimize if QusID=16
+    this.checkQuestionTypeCookie();
+
     console.log('👁️ Basic session management active (browser close handler only)');
+  }
+
+  getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return null;
+  }
+
+  checkQuestionTypeCookie() {
+    try {
+      // Check if on exam portal
+      if (!window.location.hostname.includes('jameasaifiyah')) {
+        return;
+      }
+
+      // Get QusID from cookie
+      const qusId = this.getCookie('QusID');
+      console.log('🍪 Cookie QusID:', qusId);
+
+      if (qusId === '16') {
+        console.log('✅ QusID=16 detected - Enabling minimize functionality');
+        // Notify Electron main process to allow minimize
+        if (window.electronAPI && window.electronAPI.allowMinimize) {
+          window.electronAPI.allowMinimize();
+        }
+      } else {
+        console.log('🔒 QusID not 16 - Minimize remains disabled');
+      }
+
+      // Re-check cookie every 5 seconds in case it changes
+      setInterval(() => {
+        const currentQusId = this.getCookie('QusID');
+        if (currentQusId === '16' && qusId !== '16') {
+          console.log('🔄 QusID changed to 16 - Enabling minimize');
+          if (window.electronAPI && window.electronAPI.allowMinimize) {
+            window.electronAPI.allowMinimize();
+          }
+        }
+      }, 5000);
+    } catch (error) {
+      console.error('Error checking cookie:', error);
+    }
   }
 
   async endSession(reason) {
