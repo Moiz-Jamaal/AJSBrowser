@@ -33,11 +33,26 @@ class ExamMonitor {
     console.log('👁️ Basic session management active (browser close handler only)');
   }
 
-  getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-    return null;
+  getCookie(Ckey, CSKey) {
+    let name = Ckey + "=";
+    let decodedCookie = decodeURIComponent(document.cookie);
+    let ca = decodedCookie.split(';');
+    for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) == ' ') {
+            c = c.substring(1);
+        }
+        if (c.indexOf(name) == 0) {
+            var vl = c.substring(name.length, c.length);
+            var myarray = vl.split(/&/);
+            for (var a = 0; a < myarray.length; a++) {
+                if (myarray[a].includes(CSKey)) {
+                    return myarray[a].split("=")[1];
+                }
+            }
+        }
+    }
+    return "";
   }
 
   checkQuestionTypeCookie() {
@@ -47,8 +62,9 @@ class ExamMonitor {
         return;
       }
 
-      // Get QusID from cookie
-      const qusId = this.getCookie('QusID');
+      // Get QusID from cookie using the exam portal's cookie format
+      // Cookie format: CKQusType=QusID=16&OtherData=value
+      const qusId = this.getCookie('CKQusType', 'QusID');
       console.log('🍪 Cookie QusID:', qusId);
 
       if (qusId === '16') {
@@ -59,16 +75,33 @@ class ExamMonitor {
         }
       } else {
         console.log('🔒 QusID not 16 - Minimize remains disabled');
+        // Ensure minimize is disabled if it was previously enabled
+        if (window.electronAPI && window.electronAPI.disableMinimize) {
+          window.electronAPI.disableMinimize();
+        }
       }
 
       // Re-check cookie every 5 seconds in case it changes
+      let previousQusId = qusId;
       setInterval(() => {
-        const currentQusId = this.getCookie('QusID');
-        if (currentQusId === '16' && qusId !== '16') {
-          console.log('🔄 QusID changed to 16 - Enabling minimize');
-          if (window.electronAPI && window.electronAPI.allowMinimize) {
-            window.electronAPI.allowMinimize();
+        const currentQusId = this.getCookie('CKQusType', 'QusID');
+        
+        if (currentQusId !== previousQusId) {
+          console.log(`🔄 QusID changed from ${previousQusId} to ${currentQusId}`);
+          
+          if (currentQusId === '16') {
+            console.log('✅ Enabling minimize');
+            if (window.electronAPI && window.electronAPI.allowMinimize) {
+              window.electronAPI.allowMinimize();
+            }
+          } else {
+            console.log('🔒 Disabling minimize');
+            if (window.electronAPI && window.electronAPI.disableMinimize) {
+              window.electronAPI.disableMinimize();
+            }
           }
+          
+          previousQusId = currentQusId;
         }
       }, 5000);
     } catch (error) {

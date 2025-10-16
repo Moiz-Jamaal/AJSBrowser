@@ -81,106 +81,10 @@ function buildMenu() {
         }
       ]
     }
-  ];
-
-  // Add Admin menu if unlocked
-  if (adminMenuUnlocked) {
-    menuTemplate.push({
-      label: '🔐 Admin',
-      submenu: [
-        {
-          label: '🌐 Admin Login',
-          click: () => {
-            // Load admin login page
-            mainWindow.loadFile('adminlogin.html');
-          }
-        },
-        {
-          type: 'separator'
-        },
-        {
-          label: '◀️  Back to Exam Portal',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.loadURL(ALLOWED_DOMAIN);
-            }
-          }
-        },
-        {
-          type: 'separator'
-        },
-        {
-          label: '🔄 Check for Updates',
-          click: () => {
-            autoUpdater.manualCheckForUpdates();
-          }
-        },
-        {
-          label: 'ℹ️  About',
-          click: () => {
-            const version = autoUpdater.getCurrentVersion();
-            dialog.showMessageBox({
-              type: 'info',
-              title: 'About AJS Exam Browser',
-              message: `AJS Exam Browser v${version}`,
-              detail: `Secure examination browser for Jamea Saifiyah\n\nPerformance Optimized Edition\n\nDeveloped for academic integrity`,
-              buttons: ['OK']
-            });
-          }
-        },
-        {
-          type: 'separator'
-        },
-        {
-          label: '🔒 Lock Admin Menu',
-          click: () => {
-            adminMenuUnlocked = false;
-            buildMenu();
-            dialog.showMessageBox({
-              type: 'info',
-              title: 'Menu Locked',
-              message: 'Admin menu has been locked',
-              buttons: ['OK']
-            });
-          }
-        }
-      ]
-    });
-  }
+  ];  
 
   const menu = Menu.buildFromTemplate(menuTemplate);
   Menu.setApplicationMenu(menu);
-}
-
-// Prompt for admin password
-// Handle unlock menu clicks - 5 rapid clicks to unlock
-function handleUnlockClick() {
-  unlockClickCount++;
-  
-  // Show click count in console for debugging (not visible to users)
-  console.log(`🔓 Unlock click ${unlockClickCount}/5`);
-  
-  // Clear previous timer
-  if (unlockClickTimer) {
-    clearTimeout(unlockClickTimer);
-  }
-  
-  // If 5 clicks within 3 seconds, unlock
-  if (unlockClickCount >= 5) {
-    adminMenuUnlocked = true;
-    unlockClickCount = 0;
-    buildMenu();
-    
-    // Silent unlock - no notification
-    console.log('🔓 Admin menu unlocked via 5-click sequence');
-    return;
-  }
-  
-  // Reset counter after 3 seconds of inactivity
-  unlockClickTimer = setTimeout(() => {
-    unlockClickCount = 0;
-    console.log('🔄 Unlock counter reset');
-  }, 3000);
 }
 
 function createWindow() {
@@ -752,11 +656,6 @@ ipcMain.handle('get-system-info', async (event) => {
     totalMemory: os.totalmem(),
     freeMemory: os.freemem()
   };
-});
-
-// Handle admin unlock from frontend
-ipcMain.on('unlock-admin-request', (event) => {
-  handleUnlockClick();
 });
 
 // Handle allow-minimize request (when QusID=16)
