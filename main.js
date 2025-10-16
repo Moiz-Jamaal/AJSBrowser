@@ -20,7 +20,6 @@ let mainWindow;
 let adminMenuUnlocked = false;
 let unlockClickCount = 0;
 let unlockClickTimer = null;
-let minimizeAllowed = false; // Track if minimize is allowed based on QusID cookie
 
 // Disable hardware acceleration for better compatibility
 app.disableHardwareAcceleration();
@@ -112,8 +111,8 @@ function createWindow() {
     alwaysOnTopLevel: 'pop-up-menu', // Allow system dialogs (file picker) to appear above
     minimizable: false, // Disable minimize button
     maximizable: false, // Disable maximize button
-    // SCREEN CAPTURE PROTECTION
-    contentProtection: true // Prevents screen capture - shows black screen in screenshots/recordings
+    // SCREEN CAPTURE PROTECTION - DISABLED for audio recording compatibility
+    contentProtection: false // DRM disabled to prevent white screen during audio recording
   });
 
   // Maximize window on startup
@@ -122,15 +121,11 @@ function createWindow() {
   // Ensure window stays on top even when it loses focus
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
 
-  // Prevent window from being minimized (unless QusID=16)
+  // Prevent window from being minimized
   mainWindow.on('minimize', (event) => {
-    if (!minimizeAllowed) {
-      event.preventDefault();
-      mainWindow.restore();
-      console.log('🚫 Minimize prevented - QusID not 16');
-    } else {
-      console.log('✅ Minimize allowed - QusID=16');
-    }
+    event.preventDefault();
+    mainWindow.restore();
+    console.log('🚫 Minimize prevented');
   });
 
   // Keep window on top when it's restored or focused
@@ -663,42 +658,7 @@ ipcMain.handle('get-system-info', async (event) => {
   };
 });
 
-// Handle allow-minimize request (when QusID=16)
-ipcMain.on('allow-minimize', (event) => {
-  minimizeAllowed = true;
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setMinimizable(true);
-    console.log('✅ Minimize enabled - QusID=16 detected');
-  }
-});
-
-// Handle disable-minimize request (when QusID changes)
-ipcMain.on('disable-minimize', (event) => {
-  minimizeAllowed = false;
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setMinimizable(false);
-    console.log('🔒 Minimize disabled - QusID changed');
-  }
-});
-
-// Handle disable-content-protection request (when QusID=17 for audio recording)
-ipcMain.on('disable-content-protection', (event) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setContentProtection(false);
-    console.log('🎤 Content protection disabled - QusID=17 (audio recording)');
-  }
-});
-
-// Handle enable-content-protection request (when QusID changes away from 17)
-ipcMain.on('enable-content-protection', (event) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setContentProtection(true);
-    console.log('🔒 Content protection enabled - QusID changed');
-  }
-});
-
-// All remote monitoring, screenshot capture, and remote control handlers
-// have been removed for performance optimization
+// All monitoring, screenshot capture, and remote control handlers removed
 
 
 

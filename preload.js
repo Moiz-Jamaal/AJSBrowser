@@ -6,12 +6,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose minimal APIs to renderer process (performance optimized)
 contextBridge.exposeInMainWorld('electronAPI', {
   getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
-  unlockAdmin: () => ipcRenderer.send('unlock-admin-request'),
-  allowMinimize: () => ipcRenderer.send('allow-minimize'),
-  disableMinimize: () => ipcRenderer.send('disable-minimize'),
-  disableContentProtection: () => ipcRenderer.send('disable-content-protection'),
-  enableContentProtection: () => ipcRenderer.send('enable-content-protection')
-  // All remote monitoring and control APIs removed for performance
+  unlockAdmin: () => ipcRenderer.send('unlock-admin-request')
+  // All monitoring and control APIs removed
 });
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -42,10 +38,5 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Inject lightweight monitoring client script
-  const script = document.createElement('script');
-  script.src = 'file://' + __dirname + '/monitoring-client.js';
-  document.head.appendChild(script);
-  
-  // Remote control script removed for performance optimization
+  // Monitoring client removed - no background monitoring
 });
