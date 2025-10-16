@@ -70,6 +70,7 @@ class ExamMonitor {
       // Handle QusID=16 (minimize allowed)
       if (qusId === '16') {
         console.log('✅ QusID=16 detected - Enabling minimize functionality');
+        alert('🔓 Question Type 16 Detected\n\nMinimize function is now ENABLED.\nYou can minimize this window if needed.');
         if (window.electronAPI && window.electronAPI.allowMinimize) {
           window.electronAPI.allowMinimize();
         }
@@ -83,6 +84,7 @@ class ExamMonitor {
       // Handle QusID=17 (audio recording - disable DRM for screen visibility)
       if (qusId === '17') {
         console.log('🎤 QusID=17 detected - Disabling content protection for audio recording');
+        alert('🎤 Question Type 17 Detected\n\nAudio Recording Mode\nScreen protection DISABLED for recording.\nYou can now see the screen during audio recording.');
         if (window.electronAPI && window.electronAPI.disableContentProtection) {
           window.electronAPI.disableContentProtection();
         }
@@ -104,6 +106,7 @@ class ExamMonitor {
           // Handle minimize
           if (currentQusId === '16') {
             console.log('✅ Enabling minimize');
+            alert('🔓 Question Type Changed to 16\n\nMinimize function is now ENABLED.');
             if (window.electronAPI && window.electronAPI.allowMinimize) {
               window.electronAPI.allowMinimize();
             }
@@ -117,6 +120,7 @@ class ExamMonitor {
           // Handle content protection (DRM)
           if (currentQusId === '17') {
             console.log('🎤 Disabling content protection for audio recording');
+            alert('🎤 Question Type Changed to 17\n\nAudio Recording Mode\nScreen protection DISABLED.');
             if (window.electronAPI && window.electronAPI.disableContentProtection) {
               window.electronAPI.disableContentProtection();
             }
