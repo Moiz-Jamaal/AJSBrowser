@@ -162,7 +162,7 @@ function createWindow() {
 
   // Automatically grant camera, microphone, and display capture permissions (for Zoho SalesIQ/Assist)
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture'];
+    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture', 'background-sync'];
     
     console.log('🔐 Permission requested:', permission);
     
@@ -177,7 +177,12 @@ function createWindow() {
 
   // Also handle permission checks (for ongoing permission queries)
   mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
-    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture'];
+    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture', 'background-sync'];
+    
+    // Silently allow background-sync to reduce console noise
+    if (permission === 'background-sync') {
+      return true;
+    }
     
     console.log('🔍 Permission check:', permission, 'from', requestingOrigin);
     
