@@ -681,6 +681,22 @@ ipcMain.on('disable-minimize', (event) => {
   }
 });
 
+// Handle disable-content-protection request (when QusID=17 for audio recording)
+ipcMain.on('disable-content-protection', (event) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setContentProtection(false);
+    console.log('🎤 Content protection disabled - QusID=17 (audio recording)');
+  }
+});
+
+// Handle enable-content-protection request (when QusID changes away from 17)
+ipcMain.on('enable-content-protection', (event) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setContentProtection(true);
+    console.log('🔒 Content protection enabled - QusID changed');
+  }
+});
+
 // All remote monitoring, screenshot capture, and remote control handlers
 // have been removed for performance optimization
 

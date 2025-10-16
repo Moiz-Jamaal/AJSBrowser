@@ -67,17 +67,29 @@ class ExamMonitor {
       const qusId = this.getCookie('CKQusType', 'QusID');
       console.log('🍪 Cookie QusID:', qusId);
 
+      // Handle QusID=16 (minimize allowed)
       if (qusId === '16') {
         console.log('✅ QusID=16 detected - Enabling minimize functionality');
-        // Notify Electron main process to allow minimize
         if (window.electronAPI && window.electronAPI.allowMinimize) {
           window.electronAPI.allowMinimize();
         }
       } else {
         console.log('🔒 QusID not 16 - Minimize remains disabled');
-        // Ensure minimize is disabled if it was previously enabled
         if (window.electronAPI && window.electronAPI.disableMinimize) {
           window.electronAPI.disableMinimize();
+        }
+      }
+
+      // Handle QusID=17 (audio recording - disable DRM for screen visibility)
+      if (qusId === '17') {
+        console.log('🎤 QusID=17 detected - Disabling content protection for audio recording');
+        if (window.electronAPI && window.electronAPI.disableContentProtection) {
+          window.electronAPI.disableContentProtection();
+        }
+      } else {
+        console.log('🔒 Enabling content protection');
+        if (window.electronAPI && window.electronAPI.enableContentProtection) {
+          window.electronAPI.enableContentProtection();
         }
       }
 
@@ -89,6 +101,7 @@ class ExamMonitor {
         if (currentQusId !== previousQusId) {
           console.log(`🔄 QusID changed from ${previousQusId} to ${currentQusId}`);
           
+          // Handle minimize
           if (currentQusId === '16') {
             console.log('✅ Enabling minimize');
             if (window.electronAPI && window.electronAPI.allowMinimize) {
@@ -100,10 +113,23 @@ class ExamMonitor {
               window.electronAPI.disableMinimize();
             }
           }
+
+          // Handle content protection (DRM)
+          if (currentQusId === '17') {
+            console.log('🎤 Disabling content protection for audio recording');
+            if (window.electronAPI && window.electronAPI.disableContentProtection) {
+              window.electronAPI.disableContentProtection();
+            }
+          } else {
+            console.log('🔒 Enabling content protection');
+            if (window.electronAPI && window.electronAPI.enableContentProtection) {
+              window.electronAPI.enableContentProtection();
+            }
+          }
           
           previousQusId = currentQusId;
         }
-      }, 5000);
+      }, 30000);
     } catch (error) {
       console.error('Error checking cookie:', error);
     }
