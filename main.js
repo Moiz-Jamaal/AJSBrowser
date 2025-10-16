@@ -1,8 +1,8 @@
-const { app, BrowserWindow, Menu, dialog, shell, ipcMain, desktopCapturer, globalShortcut } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, ipcMain, globalShortcut } = require('electron');
 const path = require('path');
 const os = require('os');
 const autoUpdater = require('./auto-updater');
-const remoteServerManager = require('./server-manager');
+// Remote server manager removed for performance optimization
 
 // Enable command line switches for screen sharing support
 app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
@@ -55,10 +55,6 @@ function buildMenu() {
           label: '❌ Exit',
           accelerator: 'Alt+F4',
           click: () => {
-            // Stop remote server if running
-            if (remoteServerManager.getStatus().isRunning) {
-              remoteServerManager.stop();
-            }
             app.quit();
           }
         }
@@ -122,12 +118,11 @@ function buildMenu() {
           label: 'ℹ️  About',
           click: () => {
             const version = autoUpdater.getCurrentVersion();
-            const serverStatus = remoteServerManager.getStatus();
             dialog.showMessageBox({
               type: 'info',
               title: 'About AJS Exam Browser',
               message: `AJS Exam Browser v${version}`,
-              detail: `Secure examination browser for Jamea Saifiyah\n\nRemote Monitoring: ${serverStatus.isRunning ? 'Active' : 'Inactive'}\n\nDeveloped for academic integrity`,
+              detail: `Secure examination browser for Jamea Saifiyah\n\nPerformance Optimized Edition\n\nDeveloped for academic integrity`,
               buttons: ['OK']
             });
           }
@@ -730,9 +725,6 @@ if (!gotTheLock) {
 app.on('window-all-closed', () => {
   // Cleanup before quitting
   autoUpdater.stopAutoUpdateChecks();
-  if (remoteServerManager.getStatus().isRunning) {
-    remoteServerManager.stop();
-  }
   app.quit();
 });
 
@@ -740,36 +732,11 @@ app.on('before-quit', () => {
   // Unregister all global shortcuts
   globalShortcut.unregisterAll();
   console.log('✅ Unregistered all global shortcuts');
-  
-  // Stop remote server if running
-  if (remoteServerManager.getStatus().isRunning) {
-    remoteServerManager.stop();
-  }
 });
 
-// ==================== IPC HANDLERS FOR REMOTE MONITORING ====================
+// ==================== IPC HANDLERS ====================
 
-// Handle screen capture requests
-ipcMain.handle('capture-screen', async (event) => {
-  try {
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width: 1920, height: 1080 }
-    });
-
-    if (sources.length > 0) {
-      // Return the primary screen as base64
-      return sources[0].thumbnail.toDataURL();
-    }
-    
-    return null;
-  } catch (error) {
-    console.error('Screen capture error:', error);
-    return null;
-  }
-});
-
-// Handle system info requests
+// Handle system info requests (lightweight)
 ipcMain.handle('get-system-info', async (event) => {
   return {
     platform: os.platform(),
@@ -777,9 +744,7 @@ ipcMain.handle('get-system-info', async (event) => {
     hostname: os.hostname(),
     cpus: os.cpus().length,
     totalMemory: os.totalmem(),
-    freeMemory: os.freemem(),
-    uptime: os.uptime(),
-    userInfo: os.userInfo()
+    freeMemory: os.freemem()
   };
 });
 
@@ -788,108 +753,8 @@ ipcMain.on('unlock-admin-request', (event) => {
   handleUnlockClick();
 });
 
-// ==================== REMOTE CONTROL HANDLERS ====================
-
-// Handle remote command execution
-ipcMain.handle('remote-command', async (event, command) => {
-  try {
-    const { exec } = require('child_process');
-    return new Promise((resolve, reject) => {
-      exec(command, (error, stdout, stderr) => {
-        if (error) {
-          resolve({ success: false, error: error.message });
-        } else {
-          resolve({ success: true, output: stdout, error: stderr });
-        }
-      });
-    });
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// Handle keyboard simulation
-ipcMain.handle('simulate-keypress', async (event, { key, modifiers }) => {
-  try {
-    // Use robotjs for keyboard simulation
-    const robot = require('@jitsi/robotjs');
-    
-    // Press modifiers
-    if (modifiers) {
-      if (modifiers.includes('control')) robot.keyToggle('control', 'down');
-      if (modifiers.includes('shift')) robot.keyToggle('shift', 'down');
-      if (modifiers.includes('alt')) robot.keyToggle('alt', 'down');
-      if (modifiers.includes('command')) robot.keyToggle('command', 'down');
-    }
-    
-    // Press the key
-    robot.keyTap(key);
-    
-    // Release modifiers
-    if (modifiers) {
-      if (modifiers.includes('control')) robot.keyToggle('control', 'up');
-      if (modifiers.includes('shift')) robot.keyToggle('shift', 'up');
-      if (modifiers.includes('alt')) robot.keyToggle('alt', 'up');
-      if (modifiers.includes('command')) robot.keyToggle('command', 'up');
-    }
-    
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// Handle mouse click simulation
-ipcMain.handle('simulate-mouse-click', async (event, { x, y, button }) => {
-  try {
-    const robot = require('@jitsi/robotjs');
-    
-    // Move to position
-    robot.moveMouse(x, y);
-    
-    // Click
-    robot.mouseClick(button || 'left');
-    
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// Handle mouse move simulation
-ipcMain.handle('simulate-mouse-move', async (event, { x, y }) => {
-  try {
-    const robot = require('@jitsi/robotjs');
-    robot.moveMouse(x, y);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// Get screen size
-ipcMain.handle('get-screen-size', async (event) => {
-  try {
-    const robot = require('@jitsi/robotjs');
-    const size = robot.getScreenSize();
-    return { success: true, width: size.width, height: size.height };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// Handle desktop capturer for screen sharing - Auto-approve entire screen
-ipcMain.handle('get-desktop-sources', async (event, opts) => {
-  try {
-    console.log('🖥️ Desktop sources requested for screen sharing');
-    const sources = await desktopCapturer.getSources(opts);
-    console.log('✅ Desktop sources available:', sources.length);
-    return sources;
-  } catch (error) {
-    console.error('❌ Error getting desktop sources:', error);
-    return [];
-  }
-});
+// All remote monitoring, screenshot capture, and remote control handlers
+// have been removed for performance optimization
 
 
 

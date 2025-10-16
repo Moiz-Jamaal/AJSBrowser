@@ -723,8 +723,7 @@
                         console.log('✅ Session created:', session);
                         localStorage.setItem('sessionId', session.sessionId);
                         
-                        // Start screenshot capture after session is created
-                        startScreenshotCapture();
+                        // Screenshot capture disabled for performance optimization
                     }
                 } else {
                     console.warn('⚠️ Server returned error:', response.status);

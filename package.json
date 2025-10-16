@@ -1,7 +1,7 @@
 {
   "name": "ajs-exam-browser",
-  "version": "2.1.0",
-  "description": "Locked-down browser for Jamea Saifiyah exams",
+  "version": "2.2.0",
+  "description": "Performance-optimized locked-down browser for Jamea Saifiyah exams",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
