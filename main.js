@@ -1,86 +1,40 @@
-const { app, BrowserWindow, Menu, dialog, shell, ipcMain, globalShortcut } = require('electron');
+const { app, BrowserWindow, Menu, globalShortcut } = require('electron');
 const path = require('path');
-const os = require('os');
 const autoUpdater = require('./auto-updater');
-// Remote server manager removed for performance optimization
-
-// Enable command line switches for screen sharing support
-app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
-app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
-app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
-app.commandLine.appendSwitch('auto-select-desktop-capture-source', 'AJSExams Browser');
-
-// Allowed domain pattern
-const ALLOWED_DOMAIN = 'https://exams.jameasaifiyah.org';
-
-// Admin password for unlocking hidden menu
-const ADMIN_PASSWORD = 'AJS@Admin2025';
 
 let mainWindow;
-let adminMenuUnlocked = false;
-let unlockClickCount = 0;
-let unlockClickTimer = null;
 
-// Disable hardware acceleration for better compatibility
-app.disableHardwareAcceleration();
-
-// Function to build menu (with or without admin features)
 function buildMenu() {
   const menuTemplate = [
     {
-      label: 'AJSExams',
+      label: 'Help',
       submenu: [
         {
-          label: '🔄 Refresh (Hard Reload)',
-          accelerator: 'CmdOrCtrl+Shift+R',
+          label: 'Check for Updates',
           click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.reloadIgnoringCache();
-            }
-          }
-        },
-        {
-          label: '🏠 Go to Exam Portal',
-          accelerator: 'CmdOrCtrl+H',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.loadURL(ALLOWED_DOMAIN);
-            }
+            autoUpdater.manualCheckForUpdates();
           }
         },
         {
           type: 'separator'
         },
         {
-          label: '❌ Exit',
-          accelerator: 'Alt+F4',
+          label: 'About',
           click: () => {
-            app.quit();
+            const { dialog } = require('electron');
+            const version = autoUpdater.getCurrentVersion();
+            dialog.showMessageBox({
+              type: 'info',
+              title: 'About AJS Browser',
+              message: 'AJS Exam Browser',
+              detail: `Version: ${version}\n\nA secure browser for Aljamea-tus-Saifiyah exams.`,
+              buttons: ['OK']
+            });
           }
         }
       ]
-    },
-    {
-      label: 'View',
-      submenu: [
-        {
-          label: 'Actual Size',
-          accelerator: 'CmdOrCtrl+0',
-          role: 'resetZoom'
-        },
-        {
-          label: 'Zoom In',
-          accelerator: 'CmdOrCtrl+Plus',
-          role: 'zoomIn'
-        },
-        {
-          label: 'Zoom Out',
-          accelerator: 'CmdOrCtrl+-',
-          role: 'zoomOut'
-        }
-      ]
     }
-  ];  
+  ];
 
   const menu = Menu.buildFromTemplate(menuTemplate);
   Menu.setApplicationMenu(menu);
@@ -91,575 +45,214 @@ function createWindow() {
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      devTools: false, // Completely disable DevTools
+      devTools: false,
       webSecurity: true,
-      allowRunningInsecureContent: false,
-      plugins: false,
-      enableRemoteModule: false,
-      sandbox: false // MUST be false for screen sharing to work with Zoho Assist
+      sandbox: true
     },
-    autoHideMenuBar: false, // Keep menu bar visible
-    fullscreenable: true,
-    title: 'AJSExams Browser', // Changed to show AJSExams
-    alwaysOnTop: true, // Keep window above all other applications
-    kiosk: false, // Don't use kiosk mode (too restrictive)
-    frame: true, // Keep window frame for minimize/close
-    skipTaskbar: false, // Show in taskbar
-    alwaysOnTopLevel: 'pop-up-menu', // Allow system dialogs (file picker) to appear above
-    minimizable: false, // Disable minimize button
-    maximizable: false, // Disable maximize button
-    // SCREEN CAPTURE PROTECTION - DISABLED for audio recording compatibility
-    contentProtection: false // DRM disabled to prevent white screen during audio recording
+    title: 'AJS Browser',
+    autoHideMenuBar: true  // Hide menu bar
   });
 
-  // Maximize window on startup
-  mainWindow.maximize();
-
-  // Ensure window stays on top even when it loses focus
-  mainWindow.setAlwaysOnTop(true, 'screen-saver');
-
-  // Prevent window from being minimized
-  mainWindow.on('minimize', (event) => {
-    event.preventDefault();
-    mainWindow.restore();
-    console.log('🚫 Minimize prevented');
-  });
-
-  // Keep window on top when it's restored or focused
-  mainWindow.on('restore', () => {
-    mainWindow.setAlwaysOnTop(true, 'screen-saver');
-    mainWindow.focus();
-  });
-
-  mainWindow.on('focus', () => {
-    mainWindow.setAlwaysOnTop(true, 'screen-saver');
-  });
-
-  // Re-maximize if someone tries to unmaximize
-  mainWindow.on('unmaximize', () => {
-    mainWindow.maximize();
-  });
-
-  // Set custom user agent to identify as AJSExams browser
-  // Format specifically for ASP.NET browser detection - remove Chrome identifier
-  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSExams/1.0.0 Safari/537.36';
-  mainWindow.webContents.setUserAgent(userAgent);
-
-  // Handle media access requests (for screen sharing)
-  mainWindow.webContents.on('media-access-requested', (event, request, callback) => {
-    console.log('🎥 Media access requested:', request.mediaType);
-    // Always allow for Zoho Assist screen sharing
-    callback(true);
-  });
-
-  // Automatically grant camera, microphone, and display capture permissions (for Zoho SalesIQ/Assist)
-  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture', 'background-sync'];
-    
-    console.log('🔐 Permission requested:', permission);
-    
-    if (allowedPermissions.includes(permission)) {
-      console.log('✅ Permission granted:', permission);
-      callback(true); // Grant permission
-    } else {
-      console.log('❌ Permission denied:', permission);
-      callback(false); // Deny other permissions
-    }
-  });
-
-  // Also handle permission checks (for ongoing permission queries)
-  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
-    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture', 'background-sync'];
-    
-    // Silently allow background-sync to reduce console noise
-    if (permission === 'background-sync') {
-      return true;
-    }
-    
-    console.log('🔍 Permission check:', permission, 'from', requestingOrigin);
-    
-    if (allowedPermissions.includes(permission)) {
-      console.log('✅ Permission check passed:', permission);
-      return true;
-    }
-    
-    console.log('❌ Permission check failed:', permission);
-    return false;
-  });
-
-  // Handle file dialogs - temporarily lower window priority so file picker appears on top
-  mainWindow.webContents.on('will-attach-webview', (event, webPreferences, params) => {
-    // Allow file selection dialogs to appear
-    webPreferences.enableBlinkFeatures = 'FileSystemAccessAPI';
-  });
-
-  // Auto-approve screen sharing for Zoho Assist - Select entire screen automatically
-  mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
-    console.log('🖥️ Display media (screen share) requested - Auto-approving entire screen');
-    
-    // Get all available screens
-    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
-      if (sources.length > 0) {
-        // Automatically select the first (primary) screen
-        console.log('✅ Auto-selecting primary screen:', sources[0].name);
-        callback({ video: sources[0], audio: 'loopback' }); // Include system audio
-      } else {
-        console.log('⚠️ No screens available');
-        callback({});
-      }
-    }).catch((error) => {
-      console.error('❌ Error getting screens:', error);
-      callback({});
-    });
-  });
-
-  // Create menu with hidden admin features
-  buildMenu();
-
-  // Load the start page
+  // Load index.html as default page
   mainWindow.loadFile('index.html');
 
-  // Prevent opening new windows
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith(ALLOWED_DOMAIN)) {
-      return {
-        action: 'allow',
-        overrideBrowserWindowOptions: {
-          webPreferences: {
-            devTools: false,
-            contextIsolation: true,
-            nodeIntegration: false,
-            sandbox: false, // MUST be false for screen sharing to work
-            preload: path.join(__dirname, 'preload.js')
-          }
-        }
-      };
-    }
-    return { action: 'deny' };
-  });
+  // Build menu with Check for Updates option
+  buildMenu();
 
-  // Ensure custom user agent is applied to all navigation
-  mainWindow.webContents.on('did-start-navigation', () => {
-    // Format for ASP.NET browser detection - no Chrome identifier
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSExams/1.0.0 Safari/537.36';
-    mainWindow.webContents.setUserAgent(userAgent);
-  });
+  // Always maximize window on startup
+  mainWindow.maximize();
 
-  // Force window title to always show "AJSExams Browser"
-  mainWindow.on('page-title-updated', (event) => {
-    event.preventDefault();
-  });
-  
-  mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow.setTitle('AJSExams Browser');
-  });
-
-  // Intercept navigation attempts
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    // Allow localhost for admin panel (when admin is unlocked)
-    const isLocalhost = url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:');
-    const isAllowedDomain = url.startsWith(ALLOWED_DOMAIN);
-    const isLocalFile = url.startsWith('file://');
-    
-    // Allow local files (index.html, adminlogin.html, admin.html) when admin is unlocked or it's the index page
-    const isAdminFile = url.includes('adminlogin.html') || url.includes('admin.html');
-    const isIndexFile = url.includes('index.html');
-    
-    if (!isAllowedDomain && !isIndexFile && !(isLocalhost && adminMenuUnlocked) && !(isLocalFile && (isIndexFile || (isAdminFile && adminMenuUnlocked)))) {
-      event.preventDefault();
-      dialog.showErrorBox(
-        'Navigation Blocked',
-        'You can only access exams.jameasaifiyah.org in this browser.'
-      );
-    }
-  });
-
-  // Block external link attempts
-  mainWindow.webContents.setWindowOpenHandler(() => {
-    return { action: 'deny' };
-  });
-
-  // Prevent context menu (right-click)
-  mainWindow.webContents.on('context-menu', (event) => {
-    event.preventDefault();
-  });
-
-  // Monitor for file selection dialogs and adjust window priority
-  let fileDialogOpen = false;
-  
-  mainWindow.webContents.on('select-bluetooth-device', (event, deviceList, callback) => {
-    event.preventDefault();
-  });
-
-  // Detect when file input is clicked and temporarily adjust always-on-top
-  mainWindow.webContents.on('did-start-loading', () => {
-    // Check if a file dialog might be opening
-    mainWindow.webContents.executeJavaScript(`
-      document.addEventListener('click', function(e) {
-        if (e.target.tagName === 'INPUT' && e.target.type === 'file') {
-          // File input clicked
-          return true;
-        }
-      }, true);
-    `).catch(() => {});
-  });
-
-  // Disable keyboard shortcuts for DevTools and other features (but allow Ctrl+Shift+R)
+  // Disable DevTools shortcuts
   mainWindow.webContents.on('before-input-event', (event, input) => {
-    // Allow Ctrl+Shift+R for refresh
-    if (input.control && input.shift && input.key === 'R') {
-      return; // Allow this shortcut
-    }
-    
-    // Block F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U, Ctrl+Shift+C, F5
+    // Block F12, Ctrl+Shift+I, Cmd+Option+I, Ctrl+Shift+J, Cmd+Option+J
     if (
       input.key === 'F12' ||
       (input.control && input.shift && input.key === 'I') ||
+      (input.meta && input.alt && input.key === 'i') ||
       (input.control && input.shift && input.key === 'J') ||
-      (input.control && input.shift && input.key === 'C') ||
-      (input.control && input.key === 'U')
+      (input.meta && input.alt && input.key === 'j')
     ) {
       event.preventDefault();
     }
   });
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
-
-  // Periodically ensure window stays on top (every 2 seconds)
-  // But use a level that allows system dialogs (like file picker) to appear above
-  setInterval(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      // Use 'pop-up-menu' level instead of 'screen-saver' to allow file dialogs
-      mainWindow.setAlwaysOnTop(true, 'pop-up-menu');
-      if (!mainWindow.isMaximized()) {
-        mainWindow.maximize();
-      }
+  // Handle navigation to exam portal when user clicks consent/continue
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    // Allow navigation to exam portal
+    if (url.includes('exams.jameasaifiyah.org')) {
+      // Let it navigate normally
+      return;
     }
-  }, 2000);
+  });
 }
 
-// Handle permission checks for camera and microphone at app level
-app.on('web-contents-created', (event, contents) => {
-  // Set custom user agent - No Chrome identifier so ASP.NET detects AJSExams
-  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSExams/1.0.0 Safari/537.36';
-  contents.setUserAgent(userAgent);
+app.whenReady().then(() => {
+  createWindow();
 
-  // Grant media permissions automatically (including display capture for Zoho)
-  contents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture'];
+  // Block screenshot and screen recording shortcuts
+  const screenshotShortcuts = [
+    // Windows shortcuts
+    'PrintScreen',
+    'Super+PrintScreen',
+    'Alt+PrintScreen',
+    'Super+Shift+S', // Snipping Tool
+    'Super+Alt+PrintScreen',
     
-    console.log('🔐 [New Window] Permission requested:', permission);
+    // macOS shortcuts
+    'Command+Shift+3', // Full screenshot
+    'Command+Shift+4', // Region screenshot
+    'Command+Shift+5', // Screenshot toolbar
+    'Command+Shift+6', // Touch Bar screenshot
     
-    if (allowedPermissions.includes(permission)) {
-      console.log('✅ [New Window] Permission granted:', permission);
-      callback(true);
-    } else {
-      console.log('❌ [New Window] Permission denied:', permission);
-      callback(false);
-    }
-  });
+    // Cross-platform alternatives
+    'Control+Shift+Print',
+    'CommandOrControl+Shift+3',
+    'CommandOrControl+Shift+4',
+    'CommandOrControl+Shift+5'
+  ];
 
-  // Also handle permission checks for new windows
-  contents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
-    const allowedPermissions = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'displayCapture'];
-    
-    console.log('🔍 [New Window] Permission check:', permission, 'from', requestingOrigin);
-    
-    if (allowedPermissions.includes(permission)) {
-      console.log('✅ [New Window] Permission check passed:', permission);
-      return true;
-    }
-    
-    console.log('❌ [New Window] Permission check failed:', permission);
-    return false;
-  });
-
-  // Handle media access requests for new windows (for screen sharing)
-  contents.on('media-access-requested', (event, request, callback) => {
-    console.log('🎥 [New Window] Media access requested:', request.mediaType);
-    // Always allow for Zoho Assist screen sharing
-    callback(true);
-  });
-
-  // Auto-approve screen sharing for new windows - Select entire screen automatically
-  contents.session.setDisplayMediaRequestHandler((request, callback) => {
-    console.log('🖥️ [New Window] Display media (screen share) requested - Auto-approving entire screen');
-    
-    // Get all available screens
-    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
-      if (sources.length > 0) {
-        // Automatically select the first (primary) screen
-        console.log('✅ [New Window] Auto-selecting primary screen:', sources[0].name);
-        callback({ video: sources[0], audio: 'loopback' }); // Include system audio
-      } else {
-        console.log('⚠️ [New Window] No screens available');
-        callback({});
+  screenshotShortcuts.forEach(shortcut => {
+    try {
+      const registered = globalShortcut.register(shortcut, () => {
+        console.log(`🚫 Blocked screenshot shortcut: ${shortcut}`);
+        
+        // Show warning in the browser window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.executeJavaScript(`
+            (function() {
+              // Remove any existing warning
+              const existing = document.getElementById('screenshot-warning-overlay');
+              if (existing) existing.remove();
+              
+              // Create overlay
+              const overlay = document.createElement('div');
+              overlay.id = 'screenshot-warning-overlay';
+              overlay.style.cssText = \`
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.99);
+                z-index: 999999999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              \`;
+              
+              // Create dialog box
+              const dialog = document.createElement('div');
+              dialog.style.cssText = \`
+                background: white;
+                border-radius: 12px;
+                padding: 32px;
+                max-width: 400px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                text-align: center;
+              \`;
+              
+              dialog.innerHTML = \`
+                <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600; color: #1a1a1a;">
+                  Screenshot Blocked
+                </h2>
+                <p style="margin: 0 0 12px 0; font-size: 16px; color: #666; line-height: 1.5;">
+                  Screenshots and screen recordings are disabled during the examination.
+                </p>
+                <p style="margin: 0 0 24px 0; font-size: 14px; color: #999;">
+                  This activity has been logged for security purposes.
+                </p>
+                <button id="close-warning-btn" style="
+                  background: #cccccc;
+                  color: #666;
+                  border: none;
+                  padding: 12px 32px;
+                  border-radius: 8px;
+                  font-size: 16px;
+                  font-weight: 600;
+                  cursor: not-allowed;
+                  width: 100%;
+                  opacity: 0.6;
+                " disabled>
+                  Please wait <span id="countdown">10</span>s...
+                </button>
+              \`;
+              
+              overlay.appendChild(dialog);
+              document.body.appendChild(overlay);
+              
+              const btn = document.getElementById('close-warning-btn');
+              const countdownEl = document.getElementById('countdown');
+              let timeLeft = 10;
+              
+              // Countdown timer
+              const countdownInterval = setInterval(() => {
+                timeLeft--;
+                countdownEl.textContent = timeLeft;
+                
+                if (timeLeft <= 0) {
+                  clearInterval(countdownInterval);
+                  btn.textContent = 'OK';
+                  btn.disabled = false;
+                  btn.style.background = '#007AFF';
+                  btn.style.color = 'white';
+                  btn.style.cursor = 'pointer';
+                  btn.style.opacity = '1';
+                  
+                  // Enable click to close
+                  btn.onclick = () => {
+                    overlay.remove();
+                  };
+                }
+              }, 1000);
+              
+              // Prevent any attempt to close before countdown
+              overlay.onclick = (e) => {
+                if (e.target === overlay && timeLeft > 0) {
+                  e.stopPropagation();
+                }
+              };
+            })();
+          `);
+        }
+      });
+      
+      if (registered) {
+        console.log(`✅ Blocked screenshot shortcut: ${shortcut}`);
       }
-    }).catch((error) => {
-      console.error('❌ [New Window] Error getting screens:', error);
-      callback({});
-    });
-  });
-
-  contents.on('will-navigate', (event, navigationUrl) => {
-    const isLocalFile = navigationUrl.startsWith('file://');
-    const isLocalhost = navigationUrl.startsWith('http://localhost:') || navigationUrl.startsWith('http://127.0.0.1:');
-    const isAdminFile = navigationUrl.includes('adminlogin.html') || navigationUrl.includes('admin.html');
-    const isIndexFile = navigationUrl.includes('index.html');
-    
-    // Allow local files when admin is unlocked or it's the index page
-    if (!navigationUrl.startsWith(ALLOWED_DOMAIN) && 
-        !isIndexFile && 
-        !(isLocalFile && (isIndexFile || (isAdminFile && adminMenuUnlocked))) &&
-        !(isLocalhost && adminMenuUnlocked)) {
-      event.preventDefault();
+    } catch (error) {
+      // Some shortcuts may not work on certain platforms
+      console.log(`⚠️ Could not register shortcut: ${shortcut}`);
     }
   });
 
-  contents.on('will-redirect', (event, navigationUrl) => {
-    const isLocalFile = navigationUrl.startsWith('file://');
-    const isLocalhost = navigationUrl.startsWith('http://localhost:') || navigationUrl.startsWith('http://127.0.0.1:');
-    const isAdminFile = navigationUrl.includes('adminlogin.html') || navigationUrl.includes('admin.html');
-    const isIndexFile = navigationUrl.includes('index.html');
-    
-    // Allow local files when admin is unlocked or it's the index page
-    if (!navigationUrl.startsWith(ALLOWED_DOMAIN) && 
-        !isIndexFile && 
-        !(isLocalFile && (isIndexFile || (isAdminFile && adminMenuUnlocked))) &&
-        !(isLocalhost && adminMenuUnlocked)) {
-      event.preventDefault();
+  // Start auto-updater
+  autoUpdater.startAutoUpdateChecks();
+  console.log('✅ Auto-updater initialized');
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
     }
   });
 });
 
-// Prevent multiple instances
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
-  app.quit();
-} else {
-  app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
-  });
-
-  app.whenReady().then(() => {
-    createWindow();
-
-    // Block screenshot and screen recording shortcuts
-    const screenshotShortcuts = [
-      // Windows shortcuts
-      'PrintScreen',
-      'Super+PrintScreen',
-      'Alt+PrintScreen',
-      'Super+Shift+S', // Snipping Tool
-      'Super+Alt+PrintScreen',
-      
-      // macOS shortcuts
-      'Command+Shift+3', // Full screenshot
-      'Command+Shift+4', // Region screenshot
-      'Command+Shift+5', // Screenshot toolbar
-      'Command+Shift+6', // Touch Bar screenshot
-      
-      // Cross-platform alternatives
-      'Control+Shift+Print',
-      'CommandOrControl+Shift+3',
-      'CommandOrControl+Shift+4',
-      'CommandOrControl+Shift+5'
-    ];
-
-    screenshotShortcuts.forEach(shortcut => {
-      try {
-        const registered = globalShortcut.register(shortcut, () => {
-          console.log(`🚫 Blocked screenshot shortcut: ${shortcut}`);
-          
-          // Show in-window warning (protected by content protection)
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.executeJavaScript(`
-              (function() {
-                // Remove any existing warning
-                const existing = document.getElementById('screenshot-warning-overlay');
-                if (existing) existing.remove();
-                
-                // Create overlay
-                const overlay = document.createElement('div');
-                overlay.id = 'screenshot-warning-overlay';
-                overlay.style.cssText = \`
-                  position: fixed;
-                  top: 0;
-                  left: 0;
-                  width: 100%;
-                  height: 100%;
-                  background: rgba(0, 0, 0, 0.98);
-                  z-index: 999999999;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                \`;
-                
-                // Create dialog box
-                const dialog = document.createElement('div');
-                dialog.style.cssText = \`
-                  background: white;
-                  border-radius: 12px;
-                  padding: 32px;
-                  max-width: 400px;
-                  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                  text-align: center;
-                \`;
-                
-                dialog.innerHTML = \`
-                  <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
-                  <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600; color: #1a1a1a;">
-                    Screenshot Blocked
-                  </h2>
-                  <p style="margin: 0 0 12px 0; font-size: 16px; color: #666; line-height: 1.5;">
-                    Screenshots and screen recordings are disabled during the examination.
-                  </p>
-                  <p style="margin: 0 0 24px 0; font-size: 14px; color: #999;">
-                    This activity has been logged for security purposes.
-                  </p>
-                  <button id="close-warning-btn" style="
-                    background: #cccccc;
-                    color: #666;
-                    border: none;
-                    padding: 12px 32px;
-                    border-radius: 8px;
-                    font-size: 16px;
-                    font-weight: 600;
-                    cursor: not-allowed;
-                    width: 100%;
-                    opacity: 0.6;
-                  " disabled>
-                    Please wait <span id="countdown">10</span>s...
-                  </button>
-                \`;
-                
-                overlay.appendChild(dialog);
-                document.body.appendChild(overlay);
-                
-                const btn = document.getElementById('close-warning-btn');
-                const countdownEl = document.getElementById('countdown');
-                let timeLeft = 10;
-                
-                // Countdown timer
-                const countdownInterval = setInterval(() => {
-                  timeLeft--;
-                  countdownEl.textContent = timeLeft;
-                  
-                  if (timeLeft <= 0) {
-                    clearInterval(countdownInterval);
-                    btn.textContent = 'OK';
-                    btn.disabled = false;
-                    btn.style.background = '#007AFF';
-                    btn.style.color = 'white';
-                    btn.style.cursor = 'pointer';
-                    btn.style.opacity = '1';
-                    
-                    // Enable click to close
-                    btn.onclick = () => {
-                      overlay.remove();
-                    };
-                  }
-                }, 1000);
-                
-                // Prevent any attempt to close before countdown
-                overlay.onclick = (e) => {
-                  if (e.target === overlay && timeLeft > 0) {
-                    e.stopPropagation();
-                  }
-                };
-              })();
-            `);
-          }
-        });
-        
-        if (registered) {
-          console.log(`✅ Blocked screenshot shortcut: ${shortcut}`);
-        }
-      } catch (error) {
-        // Some shortcuts may not work on certain platforms
-        console.log(`⚠️ Could not register shortcut: ${shortcut}`);
-      }
-    });
-
-    // Start auto-update checks
-    autoUpdater.startAutoUpdateChecks();
-    console.log('✅ Auto-updater initialized');
-
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-      } else if (mainWindow) {
-        mainWindow.setAlwaysOnTop(true, 'screen-saver');
-        mainWindow.focus();
-      }
-    });
-
-    // Handle when app comes to foreground
-    app.on('browser-window-focus', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        // Use pop-up-menu level to allow system dialogs
-        mainWindow.setAlwaysOnTop(true, 'pop-up-menu');
-        mainWindow.maximize();
-      }
-    });
-
-    // Prevent other windows from stealing focus (but allow file dialogs)
-    app.on('browser-window-blur', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        // Delay refocus to allow system dialogs (file picker, camera permission) to show
-        setTimeout(() => {
-          // Check if window still exists and isn't destroyed
-          if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) {
-            // Only refocus if no system dialog is likely open
-            const focused = BrowserWindow.getFocusedWindow();
-            if (!focused || focused === mainWindow) {
-              mainWindow.focus();
-              mainWindow.setAlwaysOnTop(true, 'pop-up-menu');
-            }
-          }
-        }, 500); // Longer delay to allow dialogs to appear
-      }
-    });
-  });
-}
-
 app.on('window-all-closed', () => {
-  // Cleanup before quitting
+  // Stop auto-updater
   autoUpdater.stopAutoUpdateChecks();
+  
+  // Unregister all global shortcuts
+  globalShortcut.unregisterAll();
+  console.log('✅ Unregistered all global shortcuts');
+  
+  // Quit on all platforms including macOS
   app.quit();
 });
 
 app.on('before-quit', () => {
-  // Unregister all global shortcuts
+  // Unregister all global shortcuts on quit
   globalShortcut.unregisterAll();
-  console.log('✅ Unregistered all global shortcuts');
 });
-
-// ==================== IPC HANDLERS ====================
-
-// Handle system info requests (lightweight)
-ipcMain.handle('get-system-info', async (event) => {
-  return {
-    platform: os.platform(),
-    arch: os.arch(),
-    hostname: os.hostname(),
-    cpus: os.cpus().length,
-    totalMemory: os.totalmem(),
-    freeMemory: os.freemem()
-  };
-});
-
-// All monitoring, screenshot capture, and remote control handlers removed
-
-
-
-
