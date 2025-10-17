@@ -139,29 +139,22 @@ class AutoUpdater {
     return false;
   }
 
-  // Prompt user to update
+  // Prompt user to update (auto-install)
   async promptUpdate(release) {
     const version = release.tag_name.replace('v', '');
     const changelog = release.body || 'No changelog available';
     
-    const response = await dialog.showMessageBox({
+    // Show notification that update is starting
+    dialog.showMessageBox({
       type: 'info',
-      title: 'Update Available',
-      message: `A new version is available: ${version}`,
-      detail: `Current version: ${this.currentVersion}\n\nChangelog:\n${changelog}\n\nWould you like to download and install the update?`,
-      buttons: ['Download & Install', 'Remind Me Later', 'Skip This Version'],
-      defaultId: 0,
-      cancelId: 1
+      title: 'Update Detected',
+      message: `New version ${version} detected!`,
+      detail: `Current: ${this.currentVersion}\nNew: ${version}\n\nDownloading and installing automatically...\n\nThe browser will restart when installation is complete.`,
+      buttons: ['OK']
     });
 
-    if (response.response === 0) {
-      // Download & Install
-      this.downloadAndInstall(release);
-    } else if (response.response === 2) {
-      // Skip this version
-      console.log(`⏭️  Skipped version ${version}`);
-      // Could store this in settings to not prompt again
-    }
+    // Automatically start download and install
+    this.downloadAndInstall(release);
   }
 
   // Download and install update
@@ -169,54 +162,137 @@ class AutoUpdater {
     try {
       // Determine the correct asset based on platform
       const platform = process.platform;
-      let assetName = '';
+      const arch = process.arch;
+      let asset = null;
       
       if (platform === 'darwin') {
-        // macOS - GitHub converts spaces to dots in filenames
-        const arch = process.arch;
+        // macOS - look for DMG file
         if (arch === 'arm64') {
-          // Look for arm64 DMG (GitHub may convert spaces to dots)
-          assetName = release.assets.find(asset => 
-            asset.name.match(/AJS[.\s]Exam[.\s]Browser.*arm64\.dmg$/i)
-          )?.name;
+          asset = release.assets.find(a => 
+            a.name.match(/arm64\.dmg$/i)
+          );
         } else {
-          // Look for Intel DMG (not arm64)
-          assetName = release.assets.find(asset => 
-            asset.name.match(/AJS[.\s]Exam[.\s]Browser.*\.dmg$/i) && 
-            !asset.name.includes('arm64')
-          )?.name;
+          asset = release.assets.find(a => 
+            a.name.match(/\.dmg$/i) && !a.name.includes('arm64')
+          );
         }
       } else if (platform === 'win32') {
-        // Windows - GitHub may convert spaces to dots
-        assetName = release.assets.find(asset => 
-          asset.name.match(/AJS[.\s]Exam[.\s]Browser.*\.(exe|msi)$/i)
-        )?.name;
+        // Windows - look for EXE installer
+        asset = release.assets.find(a => 
+          a.name.match(/\.exe$/i)
+        );
       }
 
-      if (!assetName) {
-        throw new Error('No compatible installer found for your platform');
+      if (!asset) {
+        throw new Error(`No installer found for ${platform} (${arch})`);
       }
 
-      const asset = release.assets.find(a => a.name === assetName);
       const downloadUrl = asset.browser_download_url;
+      const fileName = asset.name;
+      const downloadPath = path.join(app.getPath('downloads'), fileName);
 
-      dialog.showMessageBox({
+      console.log(`📥 Downloading update from: ${downloadUrl}`);
+      console.log(`💾 Saving to: ${downloadPath}`);
+
+      // Download the file
+      await this.downloadFile(downloadUrl, downloadPath);
+
+      console.log('✅ Download complete!');
+      
+      // Show completion dialog
+      const result = await dialog.showMessageBox({
         type: 'info',
-        title: 'Downloading Update',
-        message: `Downloading ${assetName}...`,
-        detail: 'The installer will open when the download is complete.',
-        buttons: ['OK']
+        title: 'Update Downloaded',
+        message: 'Update has been downloaded successfully!',
+        detail: 'The browser will now close and install the update. Please wait for the installer to open.',
+        buttons: ['Install Now'],
+        defaultId: 0
       });
 
-      // Open download URL in default browser
-      require('electron').shell.openExternal(downloadUrl);
-
-      console.log(`📥 Opening download URL: ${downloadUrl}`);
+      if (result.response === 0) {
+        // Install based on platform
+        if (platform === 'darwin') {
+          // macOS: Open DMG file
+          console.log('🍎 Opening DMG installer...');
+          const { shell } = require('electron');
+          shell.openPath(downloadPath);
+          
+          // Wait a moment for DMG to mount, then quit
+          setTimeout(() => {
+            console.log('� Quitting app for installation...');
+            app.quit();
+          }, 2000);
+        } else if (platform === 'win32') {
+          // Windows: Run EXE installer
+          console.log('🪟 Running Windows installer...');
+          const { spawn } = require('child_process');
+          spawn(downloadPath, [], { detached: true, stdio: 'ignore' });
+          
+          // Quit app so installer can replace files
+          setTimeout(() => {
+            console.log('🔄 Quitting app for installation...');
+            app.quit();
+          }, 1000);
+        }
+      }
 
     } catch (error) {
-      console.error('❌ Download failed:', error);
-      dialog.showErrorBox('Download Failed', error.message);
+      console.error('❌ Update failed:', error);
+      dialog.showErrorBox('Update Failed', `Failed to download or install update:\n\n${error.message}`);
     }
+  }
+
+  // Download file from URL
+  downloadFile(url, dest) {
+    return new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(dest);
+      
+      https.get(url, {
+        headers: {
+          'User-Agent': 'AJS-Exam-Browser'
+        }
+      }, (response) => {
+        // Follow redirects
+        if (response.statusCode === 302 || response.statusCode === 301) {
+          file.close();
+          fs.unlinkSync(dest);
+          return this.downloadFile(response.headers.location, dest)
+            .then(resolve)
+            .catch(reject);
+        }
+
+        if (response.statusCode !== 200) {
+          file.close();
+          fs.unlinkSync(dest);
+          return reject(new Error(`Download failed with status ${response.statusCode}`));
+        }
+
+        const totalBytes = parseInt(response.headers['content-length'], 10);
+        let downloadedBytes = 0;
+
+        response.on('data', (chunk) => {
+          downloadedBytes += chunk.length;
+          const progress = ((downloadedBytes / totalBytes) * 100).toFixed(1);
+          console.log(`📊 Download progress: ${progress}%`);
+        });
+
+        response.pipe(file);
+
+        file.on('finish', () => {
+          file.close();
+          console.log('✅ File downloaded successfully');
+          resolve();
+        });
+      }).on('error', (err) => {
+        fs.unlinkSync(dest);
+        reject(err);
+      });
+
+      file.on('error', (err) => {
+        fs.unlinkSync(dest);
+        reject(err);
+      });
+    });
   }
 
   // Manual update check (triggered by user)
