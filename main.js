@@ -55,6 +55,10 @@ function createWindow() {
     autoHideMenuBar: true  // Hide menu bar
   });
 
+  // Set custom user agent to identify as AJSBrowser
+  const userAgent = 'AJSBrowser';
+  mainWindow.webContents.setUserAgent(userAgent);
+
   // Load index.html as default page
   mainWindow.loadFile('index.html');
 
@@ -237,6 +241,12 @@ function createWindow() {
       // Let it navigate normally
       return;
     }
+  });
+
+  // Ensure custom user agent is applied to all navigation
+  mainWindow.webContents.on('did-start-navigation', () => {
+    const userAgent = 'AJSBrowser';
+    mainWindow.webContents.setUserAgent(userAgent);
   });
 }
 
