@@ -55,8 +55,9 @@ function createWindow() {
     autoHideMenuBar: true  // Hide menu bar
   });
 
-  // Set custom user agent to identify as AJSBrowser
-  const userAgent = 'AJSBrowser';
+  // Custom user agent with AJSBrowser as primary identifier
+  // Format: AJSBrowser first, then compatible Chrome info
+  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSBrowser/2.2.0 Chrome/120.0.0.0 Safari/537.36';
   mainWindow.webContents.setUserAgent(userAgent);
 
   // Load index.html as default page
@@ -245,7 +246,7 @@ function createWindow() {
 
   // Ensure custom user agent is applied to all navigation
   mainWindow.webContents.on('did-start-navigation', () => {
-    const userAgent = 'AJSBrowser';
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSBrowser/2.2.0 Chrome/120.0.0.0 Safari/537.36';
     mainWindow.webContents.setUserAgent(userAgent);
   });
 }
