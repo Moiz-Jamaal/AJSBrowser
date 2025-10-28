@@ -19,10 +19,24 @@ echo ""
 # Configuration
 APP_NAME="AJS Exam Browser"
 APP_PATH="dist/mac/${APP_NAME}.app"
-DMG_PATH="dist/AJS.Exam.Browser-$(node -p "require('./package.json').version").dmg"
+VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "unknown")
+
+# Try multiple possible DMG naming patterns
+DMG_PATTERNS=(
+    "dist/AJS Exam Browser-${VERSION}-arm64-mac.dmg"
+    "dist/AJS Exam Browser-${VERSION}-arm64.dmg"
+    "dist/AJS Exam Browser-arm64-mac.dmg"
+    "dist/AJS Exam Browser-${VERSION}-mac.dmg"
+    "dist/AJS Exam Browser-${VERSION}.dmg"
+    "dist/AJS Exam Browser-mac.dmg"
+)
+
 TEAM_ID="${APPLE_TEAM_ID}"  # Set this in your environment
 APPLE_ID="${APPLE_ID_EMAIL}"  # Your Apple ID email
 APP_SPECIFIC_PASSWORD="${NOTARIZATION_PASSWORD}"  # App-specific password
+
+# Array to store found DMG files
+DMG_FILES=()
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -45,9 +59,9 @@ if [ ! -d "$APP_PATH" ]; then
 fi
 
 # Check if Developer ID certificate is installed
-CERT_NAME=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed -n 's/.*"\(.*\)"/\1/p')
+CERT_LIST=$(security find-identity -v -p codesigning | grep "Developer ID Application")
 
-if [ -z "$CERT_NAME" ]; then
+if [ -z "$CERT_LIST" ]; then
     echo -e "${RED}❌ Error: No Developer ID Application certificate found${NC}"
     echo ""
     echo "To get a certificate:"
@@ -59,7 +73,71 @@ if [ -z "$CERT_NAME" ]; then
     exit 1
 fi
 
-echo -e "${GREEN}✅ Found certificate: $CERT_NAME${NC}"
+# Count certificates
+CERT_COUNT=$(echo "$CERT_LIST" | wc -l | xargs)
+
+if [ "$CERT_COUNT" -eq 1 ]; then
+    # Only one certificate, use it automatically
+    CERT_NAME=$(echo "$CERT_LIST" | sed -n 's/.*"\(.*\)"/\1/p')
+    echo -e "${GREEN}✅ Found certificate: $CERT_NAME${NC}"
+else
+    # Multiple certificates, let user choose
+    echo -e "${YELLOW}Found $CERT_COUNT Developer ID certificates:${NC}"
+    echo ""
+    
+    # Create array of certificate names
+    CERT_NAMES=()
+    INDEX=1
+    while IFS= read -r line; do
+        CERT=$(echo "$line" | sed -n 's/.*"\(.*\)"/\1/p')
+        CERT_NAMES+=("$CERT")
+        echo "  $INDEX) $CERT"
+        ((INDEX++))
+    done <<< "$CERT_LIST"
+    
+    echo ""
+    echo -n "Select certificate (1-$CERT_COUNT): "
+    read CERT_CHOICE
+    
+    # Validate input
+    if ! [[ "$CERT_CHOICE" =~ ^[0-9]+$ ]] || [ "$CERT_CHOICE" -lt 1 ] || [ "$CERT_CHOICE" -gt "$CERT_COUNT" ]; then
+        echo -e "${RED}❌ Invalid selection${NC}"
+        exit 1
+    fi
+    
+    # Get selected certificate (array is 0-indexed)
+    CERT_NAME="${CERT_NAMES[$((CERT_CHOICE-1))]}"
+    echo ""
+    echo -e "${GREEN}✅ Selected certificate: $CERT_NAME${NC}"
+fi
+
+echo ""
+
+# Check for DMG files - try patterns first, then fallback to finding all DMGs
+echo "Looking for DMG files..."
+
+# Try known patterns
+for PATTERN in "${DMG_PATTERNS[@]}"; do
+    if [ -f "$PATTERN" ]; then
+        DMG_FILES+=("$PATTERN")
+        echo -e "${GREEN}✅ Found: $(basename "$PATTERN")${NC}"
+    fi
+done
+
+# If no DMGs found with patterns, search for any DMG files in dist/
+if [ ${#DMG_FILES[@]} -eq 0 ]; then
+    echo "Searching for all DMG files in dist/..."
+    while IFS= read -r dmg; do
+        DMG_FILES+=("$dmg")
+        echo -e "${GREEN}✅ Found: $(basename "$dmg")${NC}"
+    done < <(find dist -maxdepth 1 -name "*.dmg" -type f)
+fi
+
+if [ ${#DMG_FILES[@]} -eq 0 ]; then
+    echo -e "${YELLOW}⚠️  No DMG files found (will skip DMG signing)${NC}"
+else
+    echo -e "${GREEN}Found ${#DMG_FILES[@]} DMG file(s) to sign${NC}"
+fi
 echo ""
 
 # =============================================================================
@@ -122,32 +200,29 @@ echo ""
 # Verify the signature
 codesign --verify --deep --strict --verbose=2 "$APP_PATH" 2>&1
 
-# Check Gatekeeper acceptance
-spctl -a -t exec -vv "$APP_PATH" 2>&1
-
 echo -e "${GREEN}✅ Signature verified${NC}"
 echo ""
-
-# =============================================================================
-# Step 4: Create Signed DMG
-# =============================================================================
-
-echo "📦 Step 4: Creating signed DMG..."
+echo -e "${YELLOW}Note: Gatekeeper will still reject the app until notarized (Step 5)${NC}"
 echo ""
 
-# Remove old DMG if exists
-[ -f "$DMG_PATH" ] && rm "$DMG_PATH"
+# =============================================================================
+# Step 4: Sign DMG Files
+# =============================================================================
 
-# Create DMG (electron-builder already creates it, we just need to sign)
-if [ -f "$DMG_PATH" ]; then
-    echo "Signing DMG..."
-    codesign --force --timestamp \
-        --sign "$CERT_NAME" \
-        "$DMG_PATH"
-    
-    echo -e "${GREEN}✅ DMG signed${NC}"
+echo "📦 Step 4: Signing DMG files..."
+echo ""
+
+if [ ${#DMG_FILES[@]} -gt 0 ]; then
+    for DMG_PATH in "${DMG_FILES[@]}"; do
+        echo "Signing: $(basename "$DMG_PATH")"
+        codesign --force --timestamp \
+            --sign "$CERT_NAME" \
+            "$DMG_PATH"
+        echo -e "${GREEN}✅ Signed: $(basename "$DMG_PATH")${NC}"
+        echo ""
+    done
 else
-    echo -e "${YELLOW}⚠️  DMG not found, run: npm run build-mac${NC}"
+    echo -e "${YELLOW}⚠️  No DMG files found to sign${NC}"
 fi
 
 echo ""
@@ -164,51 +239,44 @@ if [ -z "$APPLE_ID" ] || [ -z "$TEAM_ID" ] || [ -z "$APP_SPECIFIC_PASSWORD" ]; t
     echo ""
     echo "To enable notarization, set these environment variables:"
     echo "  export APPLE_ID_EMAIL='your-email@example.com'"
-    echo "  export APPLE_TEAM_ID='YOUR_TEAM_ID'"
+    echo "  export APPLE_TEAM_ID='F628SUMJFF'"
     echo "  export NOTARIZATION_PASSWORD='xxxx-xxxx-xxxx-xxxx'"
     echo ""
     echo "Generate app-specific password at:"
     echo "  https://appleid.apple.com/account/manage"
     echo ""
+    echo "Then run the script again to notarize."
 else
-    echo "Notarizing app bundle..."
-    
-    # Create ZIP for notarization
-    NOTARIZE_ZIP="dist/${APP_NAME}.zip"
-    ditto -c -k --keepParent "$APP_PATH" "$NOTARIZE_ZIP"
-    
-    # Submit for notarization
-    echo "Submitting to Apple..."
-    xcrun notarytool submit "$NOTARIZE_ZIP" \
-        --apple-id "$APPLE_ID" \
-        --team-id "$TEAM_ID" \
-        --password "$APP_SPECIFIC_PASSWORD" \
-        --wait
-    
-    # If successful, staple the ticket
-    if [ $? -eq 0 ]; then
-        echo "Stapling notarization ticket..."
-        xcrun stapler staple "$APP_PATH"
-        
-        # Also notarize and staple the DMG
-        if [ -f "$DMG_PATH" ]; then
-            echo "Notarizing DMG..."
+    # Notarize each DMG file directly (no need to notarize app bundle separately)
+    if [ ${#DMG_FILES[@]} -gt 0 ]; then
+        for DMG_PATH in "${DMG_FILES[@]}"; do
+            echo "Notarizing DMG: $(basename "$DMG_PATH")"
+            echo "Submitting to Apple..."
+            
             xcrun notarytool submit "$DMG_PATH" \
                 --apple-id "$APPLE_ID" \
                 --team-id "$TEAM_ID" \
                 --password "$APP_SPECIFIC_PASSWORD" \
                 --wait
             
-            xcrun stapler staple "$DMG_PATH"
-        fi
+            if [ $? -eq 0 ]; then
+                echo "Stapling notarization ticket to DMG..."
+                xcrun stapler staple "$DMG_PATH"
+                echo -e "${GREEN}✅ $(basename "$DMG_PATH") notarization complete${NC}"
+                echo ""
+            else
+                echo -e "${RED}❌ $(basename "$DMG_PATH") notarization failed${NC}"
+                echo ""
+                echo "To check notarization status, run:"
+                echo "  xcrun notarytool history --apple-id $APPLE_ID --team-id $TEAM_ID --password $APP_SPECIFIC_PASSWORD"
+            fi
+        done
         
-        echo -e "${GREEN}✅ Notarization complete${NC}"
+        echo -e "${GREEN}✅ All notarizations complete${NC}"
     else
-        echo -e "${RED}❌ Notarization failed${NC}"
+        echo -e "${RED}❌ No DMG files found to notarize${NC}"
+        echo "Please run 'npm run build-mac' first to create the DMG."
     fi
-    
-    # Cleanup
-    rm "$NOTARIZE_ZIP"
 fi
 
 echo ""
@@ -223,10 +291,56 @@ echo "=========================================="
 echo ""
 echo "Signed files:"
 echo "  📱 App:  $APP_PATH"
-[ -f "$DMG_PATH" ] && echo "  💿 DMG:  $DMG_PATH"
+if [ ${#DMG_FILES[@]} -gt 0 ]; then
+    for DMG_PATH in "${DMG_FILES[@]}"; do
+        echo "  💿 DMG:  $DMG_PATH"
+    done
+fi
 echo ""
 echo "Certificate used:"
 echo "  🔐 $CERT_NAME"
+echo ""
+
+# Final verification
+echo "🔍 Final Gatekeeper verification:"
+echo ""
+
+# Check if notarization was performed
+if [ -n "$APPLE_ID" ] && [ -n "$TEAM_ID" ] && [ -n "$APP_SPECIFIC_PASSWORD" ]; then
+    echo "App bundle:"
+    SPCTL_RESULT=$(spctl -a -t exec -vv "$APP_PATH" 2>&1)
+    echo "$SPCTL_RESULT"
+    
+    if echo "$SPCTL_RESULT" | grep -q "accepted"; then
+        echo -e "${GREEN}✅ App passes Gatekeeper (Notarized)${NC}"
+    else
+        echo -e "${RED}⚠️  App rejected by Gatekeeper - Notarization may have failed${NC}"
+    fi
+
+    if [ ${#DMG_FILES[@]} -gt 0 ]; then
+        for DMG_PATH in "${DMG_FILES[@]}"; do
+            echo ""
+            echo "$(basename "$DMG_PATH"):"
+            DMG_SPCTL_RESULT=$(spctl -a -t open --context context:primary-signature -vv "$DMG_PATH" 2>&1)
+            echo "$DMG_SPCTL_RESULT"
+            
+            if echo "$DMG_SPCTL_RESULT" | grep -q "accepted"; then
+                echo -e "${GREEN}✅ DMG passes Gatekeeper (Notarized)${NC}"
+            else
+                echo -e "${RED}⚠️  DMG rejected by Gatekeeper - Notarization may have failed${NC}"
+            fi
+        done
+    fi
+else
+    echo -e "${YELLOW}⚠️  Skipping Gatekeeper check - app not notarized${NC}"
+    echo ""
+    echo "Current status (without notarization):"
+    spctl -a -t exec -vv "$APP_PATH" 2>&1 || true
+    echo ""
+    echo -e "${YELLOW}The app is signed but will show warnings on first launch.${NC}"
+    echo -e "${YELLOW}Users will need to right-click and select 'Open' to bypass Gatekeeper.${NC}"
+fi
+
 echo ""
 echo "Next steps:"
 echo "  1. Test the signed app on a different Mac"
@@ -235,7 +349,7 @@ echo "  3. Users can download and install without Gatekeeper warnings"
 echo ""
 echo "Distribution checklist:"
 echo "  ✅ Code signed with Developer ID"
-if [ ! -z "$APPLE_ID" ]; then
+if [ -n "$APPLE_ID" ] && [ -n "$TEAM_ID" ] && [ -n "$APP_SPECIFIC_PASSWORD" ]; then
     echo "  ✅ Notarized by Apple"
 else
     echo "  ⚠️  Not notarized (recommended for macOS 10.15+)"
