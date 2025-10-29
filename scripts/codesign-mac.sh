@@ -178,16 +178,17 @@ find "$APP_PATH/Contents" -name "*.app" | while read helper_app; do
         "$helper_app" 2>&1 | grep -v "replacing existing signature" || true
 done
 
-# Sign the main app
+# Sign the main app bundle
 echo ""
-echo "Signing main application..."
+echo "Signing main application bundle..."
 codesign --force --timestamp \
     --options runtime \
     --entitlements "$ENTITLEMENTS_PATH" \
     --sign "$CERT_NAME" \
     "$APP_PATH"
 
-echo -e "${GREEN}✅ Application signed successfully${NC}"
+echo -e "${GREEN}✅ Application bundle signed successfully${NC}"
+echo -e "${GREEN}   Ready for notarization${NC}"
 echo ""
 
 # =============================================================================
@@ -247,8 +248,39 @@ if [ -z "$APPLE_ID" ] || [ -z "$TEAM_ID" ] || [ -z "$APP_SPECIFIC_PASSWORD" ]; t
     echo ""
     echo "Then run the script again to notarize."
 else
-    # Notarize each DMG file directly (no need to notarize app bundle separately)
+    # Step 5a: Notarize app bundle
+    echo "📱 Step 5a: Notarizing app bundle..."
+    echo ""
+    
+    NOTARIZE_ZIP="dist/${APP_NAME}.zip"
+    
+    echo "Creating ZIP for notarization..."
+    ditto -c -k --keepParent "$APP_PATH" "$NOTARIZE_ZIP"
+    
+    echo "Submitting app bundle to Apple..."
+    xcrun notarytool submit "$NOTARIZE_ZIP" \
+        --apple-id "$APPLE_ID" \
+        --team-id "$TEAM_ID" \
+        --password "$APP_SPECIFIC_PASSWORD" \
+        --wait
+    
+    if [ $? -eq 0 ]; then
+        echo "Stapling notarization ticket to app bundle..."
+        xcrun stapler staple "$APP_PATH"
+        echo -e "${GREEN}✅ App bundle notarization complete${NC}"
+    else
+        echo -e "${RED}❌ App bundle notarization failed${NC}"
+    fi
+    
+    # Cleanup ZIP
+    rm "$NOTARIZE_ZIP"
+    echo ""
+    
+    # Step 5b: Notarize DMG files
     if [ ${#DMG_FILES[@]} -gt 0 ]; then
+        echo "💿 Step 5b: Notarizing DMG files..."
+        echo ""
+        
         for DMG_PATH in "${DMG_FILES[@]}"; do
             echo "Notarizing DMG: $(basename "$DMG_PATH")"
             echo "Submitting to Apple..."
@@ -267,15 +299,12 @@ else
             else
                 echo -e "${RED}❌ $(basename "$DMG_PATH") notarization failed${NC}"
                 echo ""
-                echo "To check notarization status, run:"
-                echo "  xcrun notarytool history --apple-id $APPLE_ID --team-id $TEAM_ID --password $APP_SPECIFIC_PASSWORD"
             fi
         done
         
         echo -e "${GREEN}✅ All notarizations complete${NC}"
     else
-        echo -e "${RED}❌ No DMG files found to notarize${NC}"
-        echo "Please run 'npm run build-mac' first to create the DMG."
+        echo -e "${YELLOW}⚠️  No DMG files found to notarize${NC}"
     fi
 fi
 
@@ -307,19 +336,21 @@ echo ""
 
 # Check if notarization was performed
 if [ -n "$APPLE_ID" ] && [ -n "$TEAM_ID" ] && [ -n "$APP_SPECIFIC_PASSWORD" ]; then
+    # Verify app bundle
     echo "App bundle:"
-    SPCTL_RESULT=$(spctl -a -t exec -vv "$APP_PATH" 2>&1)
-    echo "$SPCTL_RESULT"
+    APP_SPCTL_RESULT=$(spctl -a -t exec -vv "$APP_PATH" 2>&1)
+    echo "$APP_SPCTL_RESULT"
     
-    if echo "$SPCTL_RESULT" | grep -q "accepted"; then
-        echo -e "${GREEN}✅ App passes Gatekeeper (Notarized)${NC}"
+    if echo "$APP_SPCTL_RESULT" | grep -q "accepted"; then
+        echo -e "${GREEN}✅ App bundle passes Gatekeeper (Notarized)${NC}"
     else
-        echo -e "${RED}⚠️  App rejected by Gatekeeper - Notarization may have failed${NC}"
+        echo -e "${YELLOW}⚠️  App bundle rejected by Gatekeeper${NC}"
     fi
-
+    echo ""
+    
+    # Verify DMGs (these have the stapled notarization ticket)
     if [ ${#DMG_FILES[@]} -gt 0 ]; then
         for DMG_PATH in "${DMG_FILES[@]}"; do
-            echo ""
             echo "$(basename "$DMG_PATH"):"
             DMG_SPCTL_RESULT=$(spctl -a -t open --context context:primary-signature -vv "$DMG_PATH" 2>&1)
             echo "$DMG_SPCTL_RESULT"
@@ -327,8 +358,9 @@ if [ -n "$APPLE_ID" ] && [ -n "$TEAM_ID" ] && [ -n "$APP_SPECIFIC_PASSWORD" ]; t
             if echo "$DMG_SPCTL_RESULT" | grep -q "accepted"; then
                 echo -e "${GREEN}✅ DMG passes Gatekeeper (Notarized)${NC}"
             else
-                echo -e "${RED}⚠️  DMG rejected by Gatekeeper - Notarization may have failed${NC}"
+                echo -e "${YELLOW}⚠️  DMG rejected by Gatekeeper${NC}"
             fi
+            echo ""
         done
     fi
 else
