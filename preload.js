@@ -6,7 +6,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose minimal APIs to renderer process (performance optimized)
 contextBridge.exposeInMainWorld('electronAPI', {
   getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
-  unlockAdmin: () => ipcRenderer.send('unlock-admin-request')
+  unlockAdmin: () => ipcRenderer.send('unlock-admin-request'),
+  // Cookie APIs for window restrictions
+  setAllowMinimize: (allow) => ipcRenderer.invoke('set-allow-minimize', allow),
+  checkAllowMinimize: () => ipcRenderer.invoke('check-allow-minimize')
   // All monitoring and control APIs removed
 });
 

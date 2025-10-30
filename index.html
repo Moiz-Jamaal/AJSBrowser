@@ -614,9 +614,10 @@
         </div>
 
         <div class="footer" id="adminFooter" style="cursor: default;">
-            <p>Aljamea-tus-Saifiyah Examination Portal • AJS Exam Browser v2.2.0</p>
+            <p>Aljamea-tus-Saifiyah Examination Portal • AJS Exam Browser v3.0.0</p>
         </div>
     </div>
+    <!-- <a href="test-minimize.html">Test Window Restrictions</a> -->
 
     <script>
         // SIMPLIFIED VERSION - Only compliance checkbox required
@@ -838,8 +839,20 @@
         });
 
         // Smooth scroll to top on load
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
             window.scrollTo({ top: 0, behavior: 'smooth' });
+            
+            // Set cookie to block minimize when index.html loads using Electron API
+            if (window.electronAPI && window.electronAPI.setAllowMinimize) {
+                try {
+                    await window.electronAPI.setAllowMinimize(false);
+                    console.log('🔒 Browser locked - minimize disabled on index.html load');
+                } catch (err) {
+                    console.error('❌ Error setting minimize lock:', err);
+                }
+            } else {
+                console.warn('⚠️ Electron API not available');
+            }
         });
 
         // Track session end when browser closes or page unloads
