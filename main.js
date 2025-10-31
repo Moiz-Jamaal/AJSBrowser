@@ -1,9 +1,167 @@
-const { app, BrowserWindow, Menu, globalShortcut, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('path');
 const autoUpdater = require('./auto-updater');
 
 let mainWindow;
 let allowMinimizeSetting = false; // In-memory storage for the setting
+
+// Function to check for multiple displays
+function checkMultipleDisplays() {
+  const displays = screen.getAllDisplays();
+  return {
+    isMultiple: displays.length > 1,
+    count: displays.length,
+    displays: displays
+  };
+}
+
+// Function to show multiple display warning and prevent exam
+function showMultipleDisplayWarning() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const displayInfo = checkMultipleDisplays();
+    
+    mainWindow.webContents.executeJavaScript(`
+      (function() {
+        const displayCount = ${displayInfo.count};
+        
+        // Remove any existing overlays
+        const existing = document.getElementById('multiple-display-overlay');
+        if (existing) existing.remove();
+        
+        // Create full-screen blocking overlay
+        const overlay = document.createElement('div');
+        overlay.id = 'multiple-display-overlay';
+        overlay.style.cssText = \`
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(220, 53, 69, 0.98);
+          z-index: 2147483647;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        \`;
+        
+        // Create dialog box
+        const dialog = document.createElement('div');
+        dialog.style.cssText = \`
+          background: white;
+          border-radius: 16px;
+          padding: 40px;
+          max-width: 550px;
+          box-shadow: 0 25px 70px rgba(0,0,0,0.4);
+          text-align: center;
+          animation: shake 0.5s;
+        \`;
+        
+        // Add shake animation
+        const style = document.createElement('style');
+        style.textContent = \`
+          @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+          }
+          @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+          }
+        \`;
+        document.head.appendChild(style);
+        
+        dialog.innerHTML = \`
+          <div style="font-size: 64px; margin-bottom: 20px; animation: pulse 2s infinite;">🚫</div>
+          <h2 style="margin: 0 0 20px 0; font-size: 28px; font-weight: 700; color: #dc3545;">
+            Multiple Displays Detected!
+          </h2>
+          <div style="background: #fff3cd; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px solid #ffc107;">
+            <p style="margin: 0; font-size: 18px; font-weight: 600; color: #856404;">
+              ⚠️ EXAM MODE VIOLATION
+            </p>
+          </div>
+          <p style="margin: 0 0 15px 0; font-size: 16px; color: #333; line-height: 1.6;">
+            You currently have <strong style="color: #dc3545; font-size: 20px;">\${displayCount} displays</strong> connected to your system.
+          </p>
+          <p style="margin: 0 0 25px 0; font-size: 15px; color: #666; line-height: 1.6;">
+            For security and fairness, the exam browser <strong>requires a single display configuration</strong>. 
+            Multiple monitors, extended displays, or mirrored screens are not permitted during examinations.
+          </p>
+          
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 25px 0; text-align: left;">
+            <p style="font-size: 14px; margin: 0 0 12px 0; font-weight: 600; color: #495057;">
+              📋 Required Actions:
+            </p>
+            <ul style="font-size: 14px; margin: 0; padding-left: 25px; line-height: 2; color: #495057;">
+              <li><strong>Disconnect all external monitors</strong></li>
+              <li><strong>Disable display mirroring/extending</strong></li>
+              <li><strong>Use only your primary display</strong></li>
+              <li><strong>Close and restart the application</strong></li>
+            </ul>
+          </div>
+          
+          <div style="background: #e7f3ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #007bff;">
+            <p style="font-size: 13px; color: #004085; margin: 0; line-height: 1.5;">
+              <strong>💡 Note:</strong> This restriction ensures a fair and secure examination environment for all students. 
+              The application will remain blocked until you disconnect additional displays.
+            </p>
+          </div>
+          
+          <button id="exit-app-btn" style="
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+            border: none;
+            padding: 16px 40px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3);
+            transition: all 0.3s;
+          ">
+            🚪 EXIT APPLICATION
+          </button>
+        \`;
+        
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+        
+        // Exit button functionality
+        const exitBtn = document.getElementById('exit-app-btn');
+        exitBtn.onmouseover = () => {
+          exitBtn.style.transform = 'translateY(-2px)';
+          exitBtn.style.boxShadow = '0 6px 20px rgba(220, 53, 69, 0.4)';
+        };
+        exitBtn.onmouseout = () => {
+          exitBtn.style.transform = 'translateY(0)';
+          exitBtn.style.boxShadow = '0 4px 15px rgba(220, 53, 69, 0.3)';
+        };
+        exitBtn.onclick = () => {
+          if (window.electronAPI && window.electronAPI.quitApp) {
+            window.electronAPI.quitApp();
+          } else {
+            window.close();
+          }
+        };
+        
+        // Prevent closing overlay
+        overlay.onclick = (e) => {
+          if (e.target === overlay) {
+            e.stopPropagation();
+          }
+        };
+        
+        // Block all interactions with page content
+        overlay.addEventListener('contextmenu', (e) => e.preventDefault());
+        overlay.addEventListener('selectstart', (e) => e.preventDefault());
+      })();
+    `);
+  }
+}
 
 // Function to show screenshot warning (accessible globally)
 function showScreenshotWarning() {
@@ -176,6 +334,39 @@ function createWindow() {
 
   // Always maximize window on startup
   mainWindow.maximize();
+
+  // Check for multiple displays on startup
+  const initialDisplayCheck = checkMultipleDisplays();
+  if (initialDisplayCheck.isMultiple) {
+    console.log(`🚨 MULTIPLE DISPLAYS DETECTED: ${initialDisplayCheck.count} displays`);
+    showMultipleDisplayWarning();
+  } else {
+    console.log('✅ Single display detected - exam mode allowed');
+  }
+
+  // Monitor for display changes
+  screen.on('display-added', () => {
+    console.log('🚨 Display added - checking for multiple displays');
+    const displayCheck = checkMultipleDisplays();
+    if (displayCheck.isMultiple) {
+      showMultipleDisplayWarning();
+    }
+  });
+
+  screen.on('display-removed', () => {
+    console.log('📺 Display removed - checking display count');
+    const displayCheck = checkMultipleDisplays();
+    if (!displayCheck.isMultiple) {
+      console.log('✅ Back to single display - clearing warning');
+      // Remove warning overlay if it exists
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.executeJavaScript(`
+          const overlay = document.getElementById('multiple-display-overlay');
+          if (overlay) overlay.remove();
+        `);
+      }
+    }
+  });
 
   // Clear any existing BrowserAllowMinimize cookies from previous sessions
   mainWindow.webContents.session.cookies.get({ name: 'BrowserAllowMinimize' })
@@ -380,6 +571,11 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
+
+  // IPC handler for quitting app (for multiple display warning)
+  ipcMain.handle('quit-app', () => {
+    app.quit();
+  });
 
   // IPC handler for setting minimize permission cookie
   ipcMain.handle('set-allow-minimize', async (event, allow) => {

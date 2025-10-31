@@ -9,7 +9,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   unlockAdmin: () => ipcRenderer.send('unlock-admin-request'),
   // Cookie APIs for window restrictions
   setAllowMinimize: (allow) => ipcRenderer.invoke('set-allow-minimize', allow),
-  checkAllowMinimize: () => ipcRenderer.invoke('check-allow-minimize')
+  checkAllowMinimize: () => ipcRenderer.invoke('check-allow-minimize'),
+  // App control
+  quitApp: () => ipcRenderer.invoke('quit-app')
   // All monitoring and control APIs removed
 });
 
