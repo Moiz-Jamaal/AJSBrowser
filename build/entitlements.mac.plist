@@ -10,5 +10,15 @@
     <true/>
     <key>com.apple.security.cs.allow-dyld-environment-variables</key>
     <true/>
+    
+    <!-- Camera and Microphone Access -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    
+    <!-- Screen Recording for Screenshot Feature -->
+    <key>com.apple.security.cs.disable-executable-page-protection</key>
+    <true/>
   </dict>
 </plist>

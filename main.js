@@ -652,6 +652,38 @@ function createWindow() {
   const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSBrowser/3.1.0 Chrome/120.0.0.0 Safari/537.36';
   mainWindow.webContents.setUserAgent(userAgent);
 
+  // Auto-grant camera and microphone permissions for exam portal
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    const url = webContents.getURL();
+    
+    // Allow camera and microphone for exams.jameasaifiyah.org
+    if (permission === 'media' || permission === 'mediaKeySystem') {
+      if (url.includes('exams.jameasaifiyah.org') || url.includes('jameasaifiyah.org')) {
+        console.log(`✅ Auto-granted ${permission} permission for: ${url}`);
+        callback(true);
+      } else {
+        console.log(`❌ Denied ${permission} permission for: ${url}`);
+        callback(false);
+      }
+    } else {
+      // For other permissions, default to false
+      console.log(`⚠️ Permission requested: ${permission} for ${url} - denied by default`);
+      callback(false);
+    }
+  });
+
+  // Also handle permission checks (when page checks if permission is already granted)
+  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    // Allow media permissions for exam portal
+    if (permission === 'media' || permission === 'mediaKeySystem') {
+      if (requestingOrigin.includes('exams.jameasaifiyah.org') || requestingOrigin.includes('jameasaifiyah.org')) {
+        console.log(`✅ Permission check approved: ${permission} for ${requestingOrigin}`);
+        return true;
+      }
+    }
+    return false;
+  });
+
   // Load index.html as default page
   mainWindow.loadFile('index.html');
 

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>${EXECUTABLE_NAME}</string>
+    <key>CFBundleIdentifier</key>
+    <string>org.jameasaifiyah.exambrowser</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>AJS Exam Browser</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>3.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>3.1.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.13</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    
+    <!-- Camera Access -->
+    <key>NSCameraUsageDescription</key>
+    <string>AJS Exam Browser requires camera access for exam proctoring and identity verification. Your camera feed is used to monitor the examination session and ensure academic integrity.</string>
+    
+    <!-- Microphone Access -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>AJS Exam Browser requires microphone access for exam proctoring. Audio is recorded during the examination to ensure academic integrity and compliance with examination rules.</string>
+    
+    <!-- Screen Recording (for screenshot feature) -->
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>AJS Exam Browser requires screen recording permission to capture screenshots during the examination for monitoring and security purposes.</string>
+    
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.education</string>
+</dict>
+</plist>
