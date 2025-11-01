@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Screenshot Feature</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #007bff;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-start {
+            background: #28a745;
+            color: white;
+        }
+        .btn-start:hover {
+            background: #218838;
+        }
+        .btn-stop {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-stop:hover {
+            background: #c82333;
+        }
+        .btn-test {
+            background: #007bff;
+            color: white;
+        }
+        .btn-test:hover {
+            background: #0056b3;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+        .status.active {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.inactive {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .log {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        input[type="text"], input[type="number"] {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            width: 200px;
+        }
+        label {
+            font-weight: 600;
+            margin-right: 10px;
+        }
+        .form-row {
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📸 Screenshot Automation Test</h1>
+        
+        <div class="info">
+            <h3>How it works:</h3>
+            <p>The browser monitors the cookie <code>BrowserAllowScreenShots</code> with format: <code>UserEvalID_IntervalInSeconds</code></p>
+            <ul>
+                <li><strong>Example:</strong> <code>2859_30</code> = UserEvalID 2859, capture every 30 seconds</li>
+                <li><strong>Stop:</strong> Set interval to <code>0</code> or remove the cookie</li>
+                <li>Screenshots are full-screen captures uploaded to the server</li>
+            </ul>
+        </div>
+
+        <div id="status" class="status inactive">
+            🔴 Current Status: Screenshot automation is STOPPED
+        </div>
+
+        <div class="form-row">
+            <label>UserEvalID:</label>
+            <input type="text" id="userEvalId" value="2859" placeholder="Enter UserEvalID">
+        </div>
+
+        <div class="form-row">
+            <label>Interval (seconds):</label>
+            <input type="number" id="interval" value="30" min="0" placeholder="Interval in seconds">
+        </div>
+
+        <div class="button-group">
+            <button class="btn-start" onclick="startScreenshots()">▶️ Start Screenshot Automation</button>
+            <button class="btn-stop" onclick="stopScreenshots()">⏹️ Stop Screenshot Automation</button>
+            <button class="btn-test" onclick="testScreenshot()">🧪 Test Single Screenshot</button>
+        </div>
+
+        <h3>Activity Log:</h3>
+        <div class="log" id="log">
+            <div class="log-entry">Ready to start...</div>
+        </div>
+    </div>
+
+    <script>
+        function addLog(message) {
+            const log = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        async function startScreenshots() {
+            const userEvalId = document.getElementById('userEvalId').value;
+            const interval = document.getElementById('interval').value;
+            
+            if (!userEvalId || !interval) {
+                addLog('❌ Please enter both UserEvalID and Interval');
+                return;
+            }
+            
+            const cookieValue = `${userEvalId}_${interval}`;
+            
+            // Use Electron API to set cookie (works with file:// protocol)
+            if (window.electronAPI && window.electronAPI.setScreenshotCookie) {
+                addLog(`🍪 Setting screenshot cookie via Electron API: ${cookieValue}`);
+                const success = await window.electronAPI.setScreenshotCookie(cookieValue);
+                
+                if (success) {
+                    // Update status
+                    const status = document.getElementById('status');
+                    status.className = 'status active';
+                    status.innerHTML = `🟢 Current Status: Screenshot automation ACTIVE (UserEvalID: ${userEvalId}, Interval: ${interval}s)`;
+                    
+                    addLog(`✅ Screenshot automation started: ${cookieValue}`);
+                } else {
+                    addLog('❌ Failed to set screenshot cookie');
+                }
+            } else {
+                addLog('❌ Electron API not available');
+            }
+        }
+
+        async function stopScreenshots() {
+            const userEvalId = document.getElementById('userEvalId').value || '0';
+            const cookieValue = `${userEvalId}_0`;
+            
+            // Use Electron API to set cookie with interval 0
+            if (window.electronAPI && window.electronAPI.setScreenshotCookie) {
+                addLog(`🛑 Stopping screenshot automation: ${cookieValue}`);
+                const success = await window.electronAPI.setScreenshotCookie(cookieValue);
+                
+                if (success) {
+                    // Update status
+                    const status = document.getElementById('status');
+                    status.className = 'status inactive';
+                    status.innerHTML = '🔴 Current Status: Screenshot automation is STOPPED';
+                    
+                    addLog('⏹️ Screenshot automation stopped');
+                } else {
+                    addLog('❌ Failed to stop screenshot automation');
+                }
+            } else {
+                addLog('❌ Electron API not available');
+            }
+        }
+
+        async function testScreenshot() {
+            if (window.electronAPI && window.electronAPI.captureScreenshot) {
+                addLog('📸 Capturing test screenshot...');
+                const screenshot = await window.electronAPI.captureScreenshot();
+                if (screenshot) {
+                    addLog(`✅ Screenshot captured successfully (${screenshot.length} bytes)`);
+                } else {
+                    addLog('❌ Failed to capture screenshot');
+                }
+            } else {
+                addLog('❌ Electron API not available');
+            }
+        }
+
+        // Check current status on load
+        window.addEventListener('load', () => {
+            const cookies = document.cookie.split(';');
+            const screenshotCookie = cookies.find(c => c.trim().startsWith('BrowserAllowScreenShots='));
+            
+            if (screenshotCookie) {
+                const value = screenshotCookie.split('=')[1];
+                const parts = value.split('_');
+                
+                if (parts.length === 2) {
+                    const userEvalId = parts[0];
+                    const interval = parts[1];
+                    
+                    document.getElementById('userEvalId').value = userEvalId;
+                    document.getElementById('interval').value = interval;
+                    
+                    if (interval !== '0') {
+                        const status = document.getElementById('status');
+                        status.className = 'status active';
+                        status.innerHTML = `🟢 Current Status: Screenshot automation ACTIVE (UserEvalID: ${userEvalId}, Interval: ${interval}s)`;
+                        addLog(`📋 Found existing cookie: ${value}`);
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

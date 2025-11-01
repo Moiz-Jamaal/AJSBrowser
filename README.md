@@ -323,3 +323,67 @@ Developed for academic integrity and secure online examinations.
 **Version**: 2.2.0 - Performance Optimized Edition  
 **Maintainer**: Moiz Jamaal  
 **Repository**: https://github.com/Moiz-Jamaal/AJSBrowser
+
+
+
+
+
+
+
+1. Navigate to the ECS console and select the 'cfContainerCluster' cluster
+
+2. Find and select the service 'cfContainer-ECSFargateService-eXqwkKldcONO'
+
+3. In the service details, go to the 'Health and metrics' tab
+
+4. Review the 'Service events' for any specific error messages related to the task failures
+
+5. Go to the 'Tasks' tab and select the failed task
+
+6. Check the logs of the 'cfContainerContainer' container for any application-specific errors
+
+7. Navigate to the EC2 console and select 'Target Groups' from the left sidebar
+
+8. Find and select the target group 'cfCont-Targe-9PKLMBOY5P8D'
+
+9. Review the 'Health check' settings to ensure they are appropriate for your application:
+   - Verify the health check path
+   - Check the health check protocol
+   - Review the health check port
+   - Adjust the healthy and unhealthy threshold counts if necessary
+
+10. In the target group, go to the 'Targets' tab and check if any targets are failing health checks
+
+11. If the health checks are failing, review your application code to ensure it's responding correctly to the health check requests
+
+12. If necessary, update the task definition to include a startup script that ensures your application is fully initialized before accepting traffic
+
+13. If you've made changes, update the ECS service with the new task definition
+
+14. Monitor the service events and task status to ensure the new tasks pass the health checks
+
+If you don't have permissions to do the following changes, contact your AWS Administrator:
+
+15. If the issue persists, you may need to adjust the IAM role associated with the ECS task. Navigate to the IAM console
+
+16. Find the task execution role used by your ECS tasks
+
+17. Review the permissions and ensure it has the necessary permissions to interact with other AWS services your application might be using
+
+18. If needed, add a policy to the role with the following permissions:
+    ```json
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "elasticloadbalancing:DescribeTargetHealth",
+                    "elasticloadbalancing:RegisterTargets",
+                    "elasticloadbalancing:DeregisterTargets"
+                ],
+                "Resource": "arn:aws:elasticloadbalancing:us-east-1:322254080677:targetgroup/cfCont-Targe-9PKLMBOY5P8D/8209914af8a96bfe"
+            }
+        ]
+    }
+    ```

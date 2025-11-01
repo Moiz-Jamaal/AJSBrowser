@@ -1,9 +1,336 @@
-const { app, BrowserWindow, Menu, globalShortcut, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, Menu, globalShortcut, ipcMain, screen, desktopCapturer, net, nativeImage, systemPreferences } = require('electron');
 const path = require('path');
 const autoUpdater = require('./auto-updater');
+const https = require('https');
 
 let mainWindow;
 let allowMinimizeSetting = false; // In-memory storage for the setting
+// Screenshot automation variables
+let screenshotInterval = null;
+let currentUserEvalID = null;
+let inMemoryScreenshotCookie = null; // For file:// protocol pages
+
+// Function to check and request screen recording permission
+async function checkScreenCapturePermission() {
+  try {
+    // macOS specific permission check
+    if (process.platform === 'darwin') {
+      const status = systemPreferences.getMediaAccessStatus('screen');
+      console.log(`🔐 Screen recording permission status: ${status}`);
+      
+      if (status !== 'granted') {
+        console.log('📋 Requesting screen recording permission...');
+        
+        // Request permission by attempting to capture
+        const sources = await desktopCapturer.getSources({
+          types: ['screen'],
+          thumbnailSize: { width: 150, height: 150 }
+        });
+        
+        if (sources && sources.length > 0) {
+          console.log('✅ Screen recording permission granted');
+          return true;
+        } else {
+          console.log('⚠️ Screen recording permission may be denied');
+          
+          // Show alert to user
+          const { dialog } = require('electron');
+          const response = await dialog.showMessageBox({
+            type: 'warning',
+            title: 'Screen Recording Permission Required',
+            message: 'AJS Browser needs screen recording permission for exam monitoring.',
+            detail: 'Please go to System Preferences > Security & Privacy > Privacy > Screen Recording and enable permission for AJS Browser.\n\nThe app will restart after you grant permission.',
+            buttons: ['Open System Preferences', 'I\'ll Do It Later'],
+            defaultId: 0
+          });
+          
+          if (response.response === 0) {
+            // Open System Preferences
+            const { shell } = require('electron');
+            shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
+          }
+          
+          return false;
+        }
+      } else {
+        console.log('✅ Screen recording permission already granted');
+        return true;
+      }
+    } else if (process.platform === 'win32') {
+      // Windows doesn't require explicit permission for screen capture
+      console.log('✅ Windows platform - screen capture available');
+      return true;
+    } else {
+      // Linux and other platforms
+      console.log('✅ Platform supports screen capture');
+      return true;
+    }
+  } catch (error) {
+    console.error('❌ Error checking screen capture permission:', error);
+    return false;
+  }
+}
+
+// Function to capture full screen screenshot (all displays)
+async function captureFullScreenshot() {
+  try {
+    const displays = screen.getAllDisplays();
+    console.log(`📺 Capturing ${displays.length} display(s)...`);
+    
+    // Get all screen sources with high resolution
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 3840, height: 2160 }
+    });
+
+    if (!sources || sources.length === 0) {
+      console.error('❌ No screen sources available');
+      return null;
+    }
+
+    // Capture all screens and compress them
+    const allScreenshots = [];
+    const maxSizeKB = 1024; // 1MB max per screenshot
+    
+    for (let i = 0; i < sources.length; i++) {
+      const source = sources[i];
+      const thumbnail = source.thumbnail;
+      
+      // Start with high quality JPEG compression
+      let quality = 90;
+      let compressedImage = thumbnail.toJPEG(quality);
+      let sizeKB = compressedImage.length / 1024;
+      
+      // Reduce quality until size is under 1MB
+      while (sizeKB > maxSizeKB && quality > 30) {
+        quality -= 5;
+        compressedImage = thumbnail.toJPEG(quality);
+        sizeKB = compressedImage.length / 1024;
+      }
+      
+      // Convert to base64
+      const base64 = compressedImage.toString('base64');
+      
+      allScreenshots.push({
+        name: source.name,
+        display: displays[i] ? displays[i].bounds : null,
+        base64: base64,
+        size: sizeKB.toFixed(2),
+        quality: quality,
+        width: thumbnail.getSize().width,
+        height: thumbnail.getSize().height
+      });
+      
+      console.log(`✅ Captured screen ${i + 1}: ${source.name} (${sizeKB.toFixed(2)} KB, ${thumbnail.getSize().width}x${thumbnail.getSize().height}, JPEG quality: ${quality}%)`);
+    }
+
+    // Log summary
+    const totalSize = allScreenshots.reduce((sum, s) => sum + parseFloat(s.size), 0).toFixed(2);
+    console.log(`📸 Multi-display screenshot: ${allScreenshots.length} screens, total ${totalSize} KB`);
+    
+    allScreenshots.forEach((shot, idx) => {
+      console.log(`   Screen ${idx + 1}: ${shot.name} - ${shot.size} KB (${shot.width}x${shot.height})`);
+    });
+    
+    // Return array of screenshots for multiple displays
+    return allScreenshots;
+  } catch (error) {
+    console.error('❌ Error capturing screenshot:', error);
+    return null;
+  }
+}
+
+// Function to upload screenshot(s) to server
+async function uploadScreenshot(userEvalID, screenshotData) {
+  try {
+    // Check if screenshotData is an array (multiple displays) or string (single display)
+    if (Array.isArray(screenshotData)) {
+      // Multiple displays - upload each one separately
+      console.log(`📤 Uploading ${screenshotData.length} screenshots for UserEvalID: ${userEvalID}...`);
+      
+      const uploadPromises = screenshotData.map(async (shot, index) => {
+        // Add screen number to UserEvalID (e.g., 2859_Screen1, 2859_Screen2)
+        const screenUserEvalID = `${userEvalID}_Screen${index + 1}`;
+        return await uploadSingleScreenshot(screenUserEvalID, shot.base64, shot.name);
+      });
+      
+      const results = await Promise.all(uploadPromises);
+      const successCount = results.filter(r => r).length;
+      
+      console.log(`✅ Uploaded ${successCount}/${screenshotData.length} screenshots successfully`);
+      return successCount > 0;
+    } else {
+      // Single display - upload directly
+      return await uploadSingleScreenshot(userEvalID, screenshotData);
+    }
+  } catch (error) {
+    console.error('❌ Error in uploadScreenshot:', error);
+    return false;
+  }
+}
+
+// Helper function to upload a single screenshot
+async function uploadSingleScreenshot(userEvalID, base64Image, screenName = '') {
+  return new Promise((resolve, reject) => {
+    try {
+      const postData = `UserEvalID=${encodeURIComponent(userEvalID)}&base64String=${encodeURIComponent(base64Image)}`;
+      
+      const options = {
+        hostname: 'exams.jameasaifiyah.org',
+        port: 443,
+        path: '/AJSEvalWS.asmx/SaveScreenShot',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      };
+      
+      const displayName = screenName ? ` (${screenName})` : '';
+      console.log(`📤 Uploading screenshot${displayName} for UserEvalID: ${userEvalID}...`);
+      
+      const req = https.request(options, (res) => {
+        let data = '';
+        
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            console.log(`✅ Screenshot${displayName} uploaded successfully`);
+            resolve(true);
+          } else {
+            console.error(`❌ Failed to upload screenshot${displayName}: ${res.statusCode} ${res.statusMessage}`);
+            console.error(`Response: ${data}`);
+            resolve(false);
+          }
+        });
+      });
+      
+      req.on('error', (error) => {
+        console.error(`❌ Error uploading screenshot${displayName}:`, error.message);
+        resolve(false);
+      });
+      
+      req.write(postData);
+      req.end();
+      
+    } catch (error) {
+      console.error('❌ Exception in uploadScreenshot:', error);
+      resolve(false);
+    }
+  });
+}
+
+// Function to parse BrowserAllowScreenShots cookie
+function parseScreenshotCookie(cookieValue) {
+  if (!cookieValue || cookieValue === '') {
+    return { userEvalID: null, interval: 0 };
+  }
+  
+  const parts = cookieValue.split('_');
+  if (parts.length !== 2) {
+    console.warn('⚠️ Invalid BrowserAllowScreenShots cookie format');
+    return { userEvalID: null, interval: 0 };
+  }
+  
+  const userEvalID = parts[0];
+  const interval = parseInt(parts[1], 10);
+  
+  if (isNaN(interval) || interval < 0) {
+    console.warn('⚠️ Invalid interval in cookie');
+    return { userEvalID, interval: 0 };
+  }
+  
+  return { userEvalID, interval };
+}
+
+// Function to check and manage screenshot automation
+async function manageScreenshotAutomation() {
+  try {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    
+    const currentURL = mainWindow.webContents.getURL();
+    console.log(`🌐 Current URL: ${currentURL}`);
+    
+    // Get cookie from session or in-memory storage
+    let cookieValue = null;
+    
+    // For file:// protocol, check in-memory storage first
+    if (currentURL.startsWith('file://')) {
+      cookieValue = inMemoryScreenshotCookie;
+      if (cookieValue) {
+        console.log(`📋 Screenshot cookie found (in-memory): ${cookieValue}`);
+      } else {
+        console.log('🔍 No in-memory cookie found for file:// protocol');
+      }
+    } else {
+      // For HTTP/HTTPS, check session cookies
+      try {
+        const cookies = await mainWindow.webContents.session.cookies.get({
+          name: 'BrowserAllowScreenShots'
+        });
+        
+        if (cookies.length > 0) {
+          cookieValue = cookies[0].value;
+          console.log(`📋 Screenshot cookie found (session): ${cookieValue}`);
+        } else {
+          console.log('🔍 No session cookie found');
+        }
+      } catch (error) {
+        console.log('❌ Error reading session cookies:', error);
+      }
+    }
+    
+    const { userEvalID, interval } = parseScreenshotCookie(cookieValue);
+    
+    // Stop existing interval if any
+    if (screenshotInterval) {
+      clearInterval(screenshotInterval);
+      screenshotInterval = null;
+      console.log('⏹️ Stopped previous screenshot interval');
+    }
+    
+    // If interval is 0 or no valid cookie, stop screenshots
+    if (!userEvalID || interval === 0) {
+      console.log('🛑 Screenshot automation stopped (interval = 0 or no cookie)');
+      currentUserEvalID = null;
+      return;
+    }
+    
+    // Start new screenshot interval
+    currentUserEvalID = userEvalID;
+    console.log(`🎬 Starting screenshot automation: UserEvalID=${userEvalID}, Interval=${interval}s`);
+    
+    // Take first screenshot immediately
+    console.log('📸 Taking initial screenshot...');
+    const firstScreenshot = await captureFullScreenshot();
+    if (firstScreenshot) {
+      const uploaded = await uploadScreenshot(userEvalID, firstScreenshot);
+      if (uploaded) {
+        console.log('✅ Initial screenshot uploaded successfully');
+      }
+    }
+    
+    // Set up interval for subsequent screenshots
+    console.log(`⏱️ Setting up interval: capture every ${interval} seconds`);
+    screenshotInterval = setInterval(async () => {
+      console.log(`📸 Interval triggered - capturing screenshot (UserEvalID: ${currentUserEvalID})`);
+      const screenshot = await captureFullScreenshot();
+      if (screenshot) {
+        await uploadScreenshot(currentUserEvalID, screenshot);
+      }
+    }, interval * 1000); // Convert seconds to milliseconds
+    
+    console.log(`✅ Screenshot automation active - interval ID: ${screenshotInterval}`);
+    
+  } catch (error) {
+    console.error('❌ Error managing screenshot automation:', error);
+  }
+}
 
 // Function to check for multiple displays
 function checkMultipleDisplays() {
@@ -108,7 +435,6 @@ function showMultipleDisplayWarning() {
               The application will remain blocked until you disconnect additional displays.
             </p>
           </div>
-          
           <button id="exit-app-btn" style="
             background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
             color: white;
@@ -323,7 +649,7 @@ function createWindow() {
 
   // Custom user agent with AJSBrowser as primary identifier
   // Format: AJSBrowser first, then compatible Chrome info
-  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSBrowser/3.0.0 Chrome/120.0.0.0 Safari/537.36';
+  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSBrowser/3.1.0 Chrome/120.0.0.0 Safari/537.36';
   mainWindow.webContents.setUserAgent(userAgent);
 
   // Load index.html as default page
@@ -388,9 +714,15 @@ function createWindow() {
         name: 'BrowserAllowMinimize'
       });
       
-      if (cookies.length > 0 && cookies[0].value === 'true') {
-        console.log('📋 Cookie check: true (from session cookie)');
-        return true;
+      if (cookies.length > 0) {
+        const cookieValue = cookies[0].value;
+        if (cookieValue === 'true') {
+          console.log('📋 Cookie check: true (from session cookie)');
+          return true;
+        } else if (cookieValue === 'false') {
+          console.log('📋 Cookie check: false (from session cookie)');
+          return false;
+        }
       }
       
       // Fall back to in-memory setting (for file:// pages)
@@ -398,9 +730,9 @@ function createWindow() {
       return allowMinimizeSetting;
     } catch (error) {
       console.log('Error checking cookie:', error);
-      // Fall back to in-memory setting
-      console.log(`📋 Cookie check fallback: ${allowMinimizeSetting}`);
-      return allowMinimizeSetting;
+      // Default to false (minimize not allowed)
+      console.log(`📋 Cookie check fallback: false (error occurred)`);
+      return false;
     }
   }
 
@@ -562,14 +894,36 @@ function createWindow() {
     }
   });
 
+  // Check for screenshot cookie when page finishes loading
+  mainWindow.webContents.on('did-finish-load', async () => {
+    console.log('📄 Page loaded - checking for screenshot cookie');
+    await manageScreenshotAutomation();
+  });
+
+  // Monitor cookie changes for screenshot automation
+  mainWindow.webContents.session.cookies.on('changed', async (event, cookie, cause, removed) => {
+    if (cookie.name === 'BrowserAllowScreenShots') {
+      if (removed) {
+        console.log('🗑️ Screenshot cookie removed');
+      } else {
+        console.log(`🍪 Screenshot cookie changed: ${cookie.value}`);
+      }
+      await manageScreenshotAutomation();
+    }
+  });
+
   // Ensure custom user agent is applied to all navigation
   mainWindow.webContents.on('did-start-navigation', () => {
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSBrowser/3.0.0 Chrome/120.0.0.0 Safari/537.36';
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AJSBrowser/3.1.0 Chrome/120.0.0.0 Safari/537.36';
     mainWindow.webContents.setUserAgent(userAgent);
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Check and request screen capture permission first
+  console.log('🔍 Checking screen capture permissions...');
+  await checkScreenCapturePermission();
+  
   createWindow();
 
   // IPC handler for quitting app (for multiple display warning)
@@ -640,6 +994,53 @@ app.whenReady().then(() => {
     }
   });
 
+  // IPC handler for triggering screenshot automation check
+  ipcMain.handle('check-screenshot-cookie', async () => {
+    await manageScreenshotAutomation();
+    return true;
+  });
+
+  // IPC handler for setting screenshot cookie (works with file:// protocol)
+  ipcMain.handle('set-screenshot-cookie', async (event, cookieValue) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
+    
+    try {
+      const url = mainWindow.webContents.getURL();
+      console.log(`🍪 Setting screenshot cookie: ${cookieValue} for ${url}`);
+      
+      // For file:// protocol, use in-memory storage
+      if (url.startsWith('file://')) {
+        inMemoryScreenshotCookie = cookieValue;
+        console.log('✅ Screenshot cookie stored in memory (file:// protocol)');
+      } else {
+        // For HTTP/HTTPS, set actual session cookie
+        const cookie = {
+          url: url,
+          name: 'BrowserAllowScreenShots',
+          value: cookieValue,
+          expirationDate: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 1 day
+        };
+        
+        await mainWindow.webContents.session.cookies.set(cookie);
+        console.log('✅ Screenshot cookie set in session (HTTP/HTTPS)');
+      }
+      
+      // Trigger screenshot automation check
+      await manageScreenshotAutomation();
+      
+      return true;
+    } catch (error) {
+      console.log('❌ Error setting screenshot cookie:', error);
+      return false;
+    }
+  });
+
+  // IPC handler for manual screenshot capture (for testing)
+  ipcMain.handle('capture-screenshot', async () => {
+    const screenshot = await captureFullScreenshot();
+    return screenshot;
+  });
+
   // Block screenshot and screen recording shortcuts at system level
   const screenshotShortcuts = [
     // Windows shortcuts - Primary methods
@@ -701,6 +1102,13 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   // Stop auto-updater
   autoUpdater.stopAutoUpdateChecks();
+  
+  // Clear screenshot interval
+  if (screenshotInterval) {
+    clearInterval(screenshotInterval);
+    screenshotInterval = null;
+    console.log('✅ Screenshot automation stopped');
+  }
   
   // Unregister all global shortcuts
   globalShortcut.unregisterAll();

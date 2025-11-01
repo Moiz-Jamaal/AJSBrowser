@@ -1,6 +1,6 @@
 {
   "name": "ajs-exam-browser",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Performance-optimized locked-down browser for Jamea Saifiyah exams",
   "main": "main.js",
   "scripts": {

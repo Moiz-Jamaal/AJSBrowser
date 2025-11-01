@@ -10,6 +10,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Cookie APIs for window restrictions
   setAllowMinimize: (allow) => ipcRenderer.invoke('set-allow-minimize', allow),
   checkAllowMinimize: () => ipcRenderer.invoke('check-allow-minimize'),
+  // Screenshot APIs
+  setScreenshotCookie: (cookieValue) => ipcRenderer.invoke('set-screenshot-cookie', cookieValue),
+  checkScreenshotCookie: () => ipcRenderer.invoke('check-screenshot-cookie'),
+  captureScreenshot: () => ipcRenderer.invoke('capture-screenshot'),
   // App control
   quitApp: () => ipcRenderer.invoke('quit-app')
   // All monitoring and control APIs removed

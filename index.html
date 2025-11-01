@@ -614,10 +614,13 @@
         </div>
 
         <div class="footer" id="adminFooter" style="cursor: default;">
-            <p>Aljamea-tus-Saifiyah Examination Portal • AJS Exam Browser v3.0.0</p>
+            <p>Aljamea-tus-Saifiyah Examination Portal • AJS Exam Browser v3.1.0</p>
         </div>
     </div>
-    <!-- <a href="test-minimize.html">Test Window Restrictions</a> -->
+    <div style="padding: 20px; text-align: center; display: none;">
+        <a href="test-screenshot.html" style="margin: 0 10px; color: #007bff; text-decoration: underline;">Test Screenshot Feature</a>
+        <a href="test-minimize.html" style="margin: 0 10px; color: #007bff; text-decoration: underline;">Test Window Restrictions</a>
+    </div>
 
     <script>
         // SIMPLIFIED VERSION - Only compliance checkbox required
@@ -842,13 +845,13 @@
         window.addEventListener('load', async () => {
             window.scrollTo({ top: 0, behavior: 'smooth' });
             
-            // Set cookie to block minimize when index.html loads using Electron API
+            // Allow minimize on index.html page using Electron API
             if (window.electronAPI && window.electronAPI.setAllowMinimize) {
                 try {
-                    await window.electronAPI.setAllowMinimize(false);
-                    console.log('🔒 Browser locked - minimize disabled on index.html load');
+                    await window.electronAPI.setAllowMinimize(true);
+                    console.log('� Browser unlocked - minimize enabled on index.html load');
                 } catch (err) {
-                    console.error('❌ Error setting minimize lock:', err);
+                    console.error('❌ Error setting minimize permission:', err);
                 }
             } else {
                 console.warn('⚠️ Electron API not available');
